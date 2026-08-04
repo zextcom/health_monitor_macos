@@ -1,0 +1,173 @@
+import XCTest
+@testable import ProjeHealthMonitor
+
+final class MockURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+final class HealthCheckServiceTests: XCTestCase {
+    private var session: URLSession!
+
+    override func setUp() {
+        super.setUp()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        session = URLSession(configuration: config)
+    }
+
+    override func tearDown() {
+        MockURLProtocol.requestHandler = nil
+        session = nil
+        super.tearDown()
+    }
+
+    private func makeEndpoint(
+        expectedStatusCode: Int = 200,
+        jsonFieldPath: String? = nil,
+        expectedFieldValue: String? = nil
+    ) -> Endpoint {
+        Endpoint(
+            name: "Test",
+            url: URL(string: "https://example.test/health")!,
+            expectedStatusCode: expectedStatusCode,
+            jsonFieldPath: jsonFieldPath,
+            expectedFieldValue: expectedFieldValue
+        )
+    }
+
+    func testHealthyWhenStatusCodeMatches() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        let result = await HealthCheckService.executeCheck(endpoint: makeEndpoint(), timeout: 5, session: session)
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertEqual(result.statusCode, 200)
+    }
+
+    func testDownWhenStatusCodeMismatches() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        let result = await HealthCheckService.executeCheck(endpoint: makeEndpoint(), timeout: 5, session: session)
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertEqual(result.statusCode, 500)
+    }
+
+    func testHealthyWhenNestedJsonFieldMatches() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = #"{"success":true,"data":{"status":"healthy","database":true}}"#
+            return (response, Data(body.utf8))
+        }
+        let endpoint = makeEndpoint(jsonFieldPath: "data.status", expectedFieldValue: "healthy")
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
+        XCTAssertTrue(result.isHealthy)
+    }
+
+    func testDownWhenNestedJsonFieldMismatches() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = #"{"success":true,"data":{"status":"degraded"}}"#
+            return (response, Data(body.utf8))
+        }
+        let endpoint = makeEndpoint(jsonFieldPath: "data.status", expectedFieldValue: "healthy")
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertNotNil(result.failureReason)
+    }
+
+    func testDownOnNetworkTimeout() async {
+        MockURLProtocol.requestHandler = { _ in
+            throw URLError(.timedOut)
+        }
+        let result = await HealthCheckService.executeCheck(endpoint: makeEndpoint(), timeout: 5, session: session)
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertNil(result.statusCode)
+    }
+
+    func testExtractValueResolvesNestedBoolAsString() {
+        let json: Any = ["data": ["database": true, "status": "healthy"]]
+        XCTAssertEqual(HealthCheckService.extractValue(from: json, path: "data.status"), "healthy")
+        XCTAssertEqual(HealthCheckService.extractValue(from: json, path: "data.database"), "true")
+        XCTAssertNil(HealthCheckService.extractValue(from: json, path: "data.missing"))
+    }
+
+    func testPerformRequestReturnsRawStatusAndBody() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(#"{"status":"healthy"}"#.utf8))
+        }
+        let result = await HealthCheckService.performRequest(url: URL(string: "https://example.test/health")!, timeout: 5, session: session)
+        switch result {
+        case .success(let raw):
+            XCTAssertEqual(raw.statusCode, 200)
+            XCTAssertEqual(String(data: raw.data, encoding: .utf8), #"{"status":"healthy"}"#)
+        case .failure:
+            XCTFail("Expected success")
+        }
+    }
+
+    func testPerformRequestReportsTimeout() async {
+        MockURLProtocol.requestHandler = { _ in
+            throw URLError(.timedOut)
+        }
+        let result = await HealthCheckService.performRequest(url: URL(string: "https://example.test/health")!, timeout: 5, session: session)
+        switch result {
+        case .success:
+            XCTFail("Expected failure")
+        case .failure(let error):
+            if case .timedOut = error {
+                // expected
+            } else {
+                XCTFail("Expected .timedOut, got \(error)")
+            }
+        }
+    }
+
+    func testFlattenProducesSortedSelectablePaths() {
+        let json: Any = [
+            "success": true,
+            "data": ["status": "healthy", "tags": ["a", "b"]]
+        ]
+        let fields = HealthCheckService.flatten(json: json)
+        let byPath = Dictionary(uniqueKeysWithValues: fields.map { ($0.path, $0) })
+
+        XCTAssertEqual(byPath["success"]?.value, "true")
+        XCTAssertTrue(byPath["success"]?.isSelectable ?? false)
+
+        XCTAssertEqual(byPath["data.status"]?.value, "healthy")
+        XCTAssertTrue(byPath["data.status"]?.isSelectable ?? false)
+
+        XCTAssertEqual(byPath["data.tags"]?.value, "[array]")
+        XCTAssertFalse(byPath["data.tags"]?.isSelectable ?? true)
+
+        XCTAssertEqual(fields.map(\.path), fields.map(\.path).sorted())
+    }
+
+    func testEvaluateIsTrimmedAndCaseInsensitive() {
+        XCTAssertTrue(HealthCheckService.evaluate(actualValue: " Healthy ", expectedValue: "healthy"))
+        XCTAssertFalse(HealthCheckService.evaluate(actualValue: "degraded", expectedValue: "healthy"))
+    }
+}
