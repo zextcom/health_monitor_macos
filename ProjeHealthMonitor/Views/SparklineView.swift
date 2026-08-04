@@ -13,9 +13,19 @@ struct SparklineView: View {
                     .fill(result.isHealthy ? Color.green : Color.red)
                     .frame(width: barWidth, height: height)
                     .help(tooltip(for: result))
+                    .accessibilityHidden(true)
             }
         }
         .frame(height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryLabel)
+    }
+
+    private var summaryLabel: String {
+        guard !results.isEmpty else { return "No check history yet" }
+        let healthyCount = results.filter(\.isHealthy).count
+        let downCount = results.count - healthyCount
+        return "History: \(results.count) checks, \(healthyCount) healthy, \(downCount) down"
     }
 
     private func tooltip(for result: HealthCheckResult) -> String {

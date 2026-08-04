@@ -9,9 +9,10 @@ struct EndpointRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 8, height: 8)
+                Image(systemName: statusSymbolName)
+                    .foregroundStyle(dotColor)
+                    .font(.system(size: 10))
+                    .accessibilityHidden(true)
                 Text(endpoint.name)
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
@@ -19,6 +20,9 @@ struct EndpointRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(endpoint.name), \(statusDescription), \(lastCheckedText)")
+
             SparklineView(results: Array(results.suffix(30)))
         }
         .padding(.vertical, 6)
@@ -27,6 +31,17 @@ struct EndpointRowView: View {
     private var dotColor: Color {
         guard let lastResult else { return .gray }
         return lastResult.isHealthy ? .green : .red
+    }
+
+    /// Shape differs per status, not just color, so the indicator reads correctly for color-blind users.
+    private var statusSymbolName: String {
+        guard let lastResult else { return "circle.dotted" }
+        return lastResult.isHealthy ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+    }
+
+    private var statusDescription: String {
+        guard let lastResult else { return "no data yet" }
+        return lastResult.isHealthy ? "healthy" : "down"
     }
 
     private var lastCheckedText: String {

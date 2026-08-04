@@ -123,6 +123,7 @@ struct EndpointFormView: View {
                 }
             }
             .disabled(!isURLValid || isTesting)
+            .accessibilityLabel(isTesting ? "Testing connection" : "Test connection")
 
             if let testStatusCode, let testElapsedMs {
                 Text("Status \(testStatusCode) · \(testElapsedMs) ms")
@@ -164,6 +165,11 @@ struct EndpointFormView: View {
                         .buttonStyle(.plain)
                         .disabled(!field.isSelectable)
                         .opacity(field.isSelectable ? 1 : 0.4)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(field.isSelectable
+                            ? "\(field.path), value \(field.value)"
+                            : "\(field.path), \(field.value), not selectable")
+                        .accessibilityAddTraits(field.isSelectable ? [.isButton] : [])
                     }
                 }
             }

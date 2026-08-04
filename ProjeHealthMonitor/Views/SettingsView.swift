@@ -179,6 +179,7 @@ struct SettingsView: View {
             Image(systemName: "waveform.path.ecg.rectangle")
                 .font(.system(size: 44))
                 .foregroundStyle(.tint)
+                .accessibilityHidden(true)
             Text(appDisplayName)
                 .font(.title2.bold())
             Text("Version \(shortVersion) (\(buildVersion))")
