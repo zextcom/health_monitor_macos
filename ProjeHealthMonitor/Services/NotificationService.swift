@@ -28,6 +28,16 @@ final class NotificationService: Sendable {
         post(content)
     }
 
+    func notifyCertificateExpiringSoon(endpointName: String, daysRemaining: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) certificate expiring soon"
+        content.body = daysRemaining >= 0
+            ? "TLS certificate expires in \(daysRemaining) day\(daysRemaining == 1 ? "" : "s")."
+            : "TLS certificate has expired."
+        content.sound = .default
+        post(content)
+    }
+
     private func post(_ content: UNMutableNotificationContent) {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)

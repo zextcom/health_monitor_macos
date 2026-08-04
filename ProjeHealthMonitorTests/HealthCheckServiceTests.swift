@@ -170,4 +170,57 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertTrue(HealthCheckService.evaluate(actualValue: " Healthy ", expectedValue: "healthy"))
         XCTAssertFalse(HealthCheckService.evaluate(actualValue: "degraded", expectedValue: "healthy"))
     }
+
+    // MARK: - Uptime percentage
+
+    private func makeResult(isHealthy: Bool) -> HealthCheckResult {
+        HealthCheckResult(endpointId: UUID(), timestamp: Date(), isHealthy: isHealthy,
+                           responseTimeMs: 50, statusCode: 200, failureReason: nil)
+    }
+
+    func testUptimePercentageIsNilForEmptyHistory() {
+        XCTAssertNil(HealthCheckService.uptimePercentage(results: []))
+    }
+
+    func testUptimePercentageComputesRatio() {
+        let results = [makeResult(isHealthy: true), makeResult(isHealthy: true),
+                        makeResult(isHealthy: true), makeResult(isHealthy: false)]
+        XCTAssertEqual(HealthCheckService.uptimePercentage(results: results) ?? -1, 75.0, accuracy: 0.001)
+    }
+
+    func testUptimePercentageIsHundredWhenAllHealthy() {
+        let results = [makeResult(isHealthy: true), makeResult(isHealthy: true)]
+        XCTAssertEqual(HealthCheckService.uptimePercentage(results: results) ?? -1, 100.0, accuracy: 0.001)
+    }
+
+    // MARK: - TLS certificate expiry (pure threshold logic; the network fetch itself isn't mockable)
+
+    func testDaysUntilExpiryRoundsDownToWholeDays() {
+        let now = Date(timeIntervalSince1970: 0)
+        let in10Days = now.addingTimeInterval(10 * 86400 + 3600) // 10 days + 1 hour
+        XCTAssertEqual(HealthCheckService.daysUntilExpiry(in10Days, from: now), 10)
+
+        let expired = now.addingTimeInterval(-5 * 86400)
+        XCTAssertEqual(HealthCheckService.daysUntilExpiry(expired, from: now), -5)
+    }
+
+    func testIsExpiringSoonRespectsThreshold() {
+        let now = Date(timeIntervalSince1970: 0)
+        let in5Days = now.addingTimeInterval(5 * 86400)
+        let in30Days = now.addingTimeInterval(30 * 86400)
+
+        XCTAssertTrue(HealthCheckService.isExpiringSoon(in5Days, thresholdDays: 14, now: now))
+        XCTAssertFalse(HealthCheckService.isExpiringSoon(in30Days, thresholdDays: 14, now: now))
+        XCTAssertFalse(HealthCheckService.isExpiringSoon(nil, thresholdDays: 14, now: now))
+    }
+
+    func testFetchCertificateExpiryAgainstRealHost() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_NETWORK_TESTS"] != nil,
+                           "Skips by default — hits a real host. Set RUN_NETWORK_TESTS=1 to run.")
+        let expiry = await HealthCheckService.fetchCertificateExpiry(host: "apple.com")
+        XCTAssertNotNil(expiry)
+        if let expiry {
+            XCTAssertGreaterThan(expiry, Date())
+        }
+    }
 }

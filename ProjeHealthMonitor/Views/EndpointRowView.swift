@@ -4,6 +4,8 @@ struct EndpointRowView: View {
     let endpoint: Endpoint
     let results: [HealthCheckResult]
 
+    private static let certWarningThresholdDays = 14
+
     private var lastResult: HealthCheckResult? { results.last }
 
     var body: some View {
@@ -24,6 +26,22 @@ struct EndpointRowView: View {
             .accessibilityLabel("\(endpoint.name), \(statusDescription), \(lastCheckedText)")
 
             SparklineView(results: Array(results.suffix(30)))
+
+            HStack {
+                if let uptimeText {
+                    Text(uptimeText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let certWarningText {
+                    Label(certWarningText, systemImage: "lock.trianglebadge.exclamationmark.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(certWarningText)
+                }
+            }
         }
         .padding(.vertical, 6)
     }
@@ -49,5 +67,18 @@ struct EndpointRowView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: lastResult.timestamp, relativeTo: Date())
+    }
+
+    private var uptimeText: String? {
+        guard let percentage = HealthCheckService.uptimePercentage(results: results) else { return nil }
+        return String(format: "%.1f%% uptime (last %d checks)", percentage, results.count)
+    }
+
+    private var certWarningText: String? {
+        guard let expiry = lastResult?.certificateExpiresAt,
+              HealthCheckService.isExpiringSoon(expiry, thresholdDays: Self.certWarningThresholdDays)
+        else { return nil }
+        let days = HealthCheckService.daysUntilExpiry(expiry)
+        return days >= 0 ? "SSL expires in \(days)d" : "SSL expired"
     }
 }

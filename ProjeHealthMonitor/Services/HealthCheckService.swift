@@ -1,4 +1,6 @@
 import Foundation
+import Network
+import Security
 
 @MainActor
 final class HealthCheckService: ObservableObject {
@@ -17,6 +19,14 @@ final class HealthCheckService: ObservableObject {
     private let notificationService: NotificationService
     private var loopTask: Task<Void, Never>?
     private var lastCheckedAt: [UUID: Date] = [:]
+
+    /// Certificates don't change minute to minute, so we refresh them on a slower cadence than
+    /// the health check itself and carry the last known value forward between refreshes.
+    private let certCheckInterval: TimeInterval = 24 * 60 * 60
+    private let certExpiryWarningDays = 14
+    private var lastCertCheckedAt: [UUID: Date] = [:]
+    private var certExpiryCache: [UUID: Date?] = [:]
+    private var certWarnedFor: Set<UUID> = []
 
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, notificationService: NotificationService) {
         self.endpointStore = endpointStore
@@ -58,7 +68,8 @@ final class HealthCheckService: ObservableObject {
 
     private func performCheck(_ endpoint: Endpoint) async {
         let previousResult = historyStore.lastResult(for: endpoint.id)
-        let result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout)
+        var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout)
+        result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
         historyStore.record(result)
 
         let wasHealthy = previousResult?.isHealthy
@@ -71,6 +82,34 @@ final class HealthCheckService: ObservableObject {
                 notificationService.notifyRecovered(endpointName: endpoint.name)
             }
         }
+
+        let expiringSoon = Self.isExpiringSoon(result.certificateExpiresAt, thresholdDays: certExpiryWarningDays)
+        if expiringSoon, !certWarnedFor.contains(endpoint.id) {
+            certWarnedFor.insert(endpoint.id)
+            if endpointStore.notificationsEnabled, let expiry = result.certificateExpiresAt {
+                notificationService.notifyCertificateExpiringSoon(endpointName: endpoint.name,
+                                                                    daysRemaining: Self.daysUntilExpiry(expiry))
+            }
+        } else if !expiringSoon {
+            certWarnedFor.remove(endpoint.id)
+        }
+    }
+
+    /// Returns the endpoint's cached certificate expiry, refreshing it first if it's stale or
+    /// missing (only for HTTPS endpoints — everything else has no certificate).
+    private func refreshedCertificateExpiry(for endpoint: Endpoint) async -> Date? {
+        guard endpoint.url.scheme?.lowercased() == "https", let host = endpoint.url.host else { return nil }
+
+        let now = Date()
+        if let lastChecked = lastCertCheckedAt[endpoint.id], now.timeIntervalSince(lastChecked) < certCheckInterval {
+            return certExpiryCache[endpoint.id] ?? nil
+        }
+
+        let port = UInt16(endpoint.url.port ?? 443)
+        let expiry = await Self.fetchCertificateExpiry(host: host, port: port, timeout: min(endpointStore.requestTimeout, 10))
+        lastCertCheckedAt[endpoint.id] = now
+        certExpiryCache[endpoint.id] = expiry
+        return expiry
     }
 
     private func updateOverallStatus() {
@@ -210,6 +249,15 @@ final class HealthCheckService: ObservableObject {
         return actual == expected
     }
 
+    /// Percentage of `results` that were healthy, or `nil` if there's no history yet.
+    /// Reflects whatever history is currently retained (see `HealthHistoryStore.maxResultsPerEndpoint`),
+    /// not a fixed calendar window — callers should pair this with the covered time span if that matters.
+    nonisolated static func uptimePercentage(results: [HealthCheckResult]) -> Double? {
+        guard !results.isEmpty else { return nil }
+        let healthyCount = results.filter(\.isHealthy).count
+        return Double(healthyCount) / Double(results.count) * 100
+    }
+
     struct FlattenedJSONField: Identifiable {
         var id: String { path }
         let path: String
@@ -241,5 +289,88 @@ final class HealthCheckService: ObservableObject {
             }
         }
         return results
+    }
+
+    // MARK: - TLS certificate expiry
+
+    /// Resumes a `CheckedContinuation` at most once. Guards against the timeout timer and the
+    /// connection's state handler both firing (they run on the same serial queue but ordering
+    /// across the timer and network callbacks isn't guaranteed to be race-free by inspection alone).
+    private final class CertFetchResumer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var resumed = false
+        private let continuation: CheckedContinuation<Date?, Never>
+
+        init(continuation: CheckedContinuation<Date?, Never>) {
+            self.continuation = continuation
+        }
+
+        func resumeOnce(_ value: Date?) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !resumed else { return }
+            resumed = true
+            continuation.resume(returning: value)
+        }
+    }
+
+    /// Opens a raw TLS connection (no HTTP request) to `host:port` and reads the leaf
+    /// certificate's expiry date from the handshake. Returns `nil` on any failure or timeout.
+    nonisolated static func fetchCertificateExpiry(host: String, port: UInt16 = 443, timeout: TimeInterval = 10) async -> Date? {
+        await withCheckedContinuation { continuation in
+            let resumer = CertFetchResumer(continuation: continuation)
+
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+                resumer.resumeOnce(nil)
+                return
+            }
+            let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tls)
+            let queue = DispatchQueue(label: "com.oneoapps.projehealthmonitor.cert-fetch")
+
+            queue.asyncAfter(deadline: .now() + timeout) {
+                resumer.resumeOnce(nil)
+                connection.cancel()
+            }
+
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    var expiry: Date?
+                    if let tlsMetadata = connection.metadata(definition: NWProtocolTLS.definition) as? NWProtocolTLS.Metadata {
+                        let secMetadata = tlsMetadata.securityProtocolMetadata
+                        sec_protocol_metadata_access_peer_certificate_chain(secMetadata) { certificate in
+                            guard expiry == nil else { return } // leaf certificate is reported first
+                            let secCert = sec_certificate_copy_ref(certificate).takeRetainedValue()
+                            expiry = notAfterDate(from: secCert)
+                        }
+                    }
+                    resumer.resumeOnce(expiry)
+                    connection.cancel()
+                case .failed, .cancelled:
+                    resumer.resumeOnce(nil)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: queue)
+        }
+    }
+
+    private nonisolated static func notAfterDate(from certificate: SecCertificate) -> Date? {
+        guard let values = SecCertificateCopyValues(certificate, [kSecOIDX509V1ValidityNotAfter] as CFArray, nil) as? [CFString: Any],
+              let notAfterDict = values[kSecOIDX509V1ValidityNotAfter] as? [CFString: Any],
+              let numberValue = notAfterDict[kSecPropertyKeyValue] as? NSNumber
+        else { return nil }
+        return Date(timeIntervalSinceReferenceDate: numberValue.doubleValue)
+    }
+
+    /// Whole days remaining until `expiryDate` (negative if already expired).
+    nonisolated static func daysUntilExpiry(_ expiryDate: Date, from now: Date = Date()) -> Int {
+        Int(expiryDate.timeIntervalSince(now) / 86400)
+    }
+
+    nonisolated static func isExpiringSoon(_ expiryDate: Date?, thresholdDays: Int, now: Date = Date()) -> Bool {
+        guard let expiryDate else { return false }
+        return daysUntilExpiry(expiryDate, from: now) <= thresholdDays
     }
 }

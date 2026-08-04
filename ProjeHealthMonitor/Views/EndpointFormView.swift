@@ -27,6 +27,7 @@ struct EndpointFormView: View {
     @State private var testFlattenedFields: [HealthCheckService.FlattenedJSONField] = []
     @State private var testIsJSON = false
     @State private var testErrorMessage: String?
+    @State private var testCertificateExpiresAt: Date?
 
     init(endpoint: Endpoint?, onComplete: @escaping (FormResult) -> Void) {
         self.originalEndpoint = endpoint
@@ -133,6 +134,12 @@ struct EndpointFormView: View {
             Spacer()
         }
 
+        if let testCertificateExpiresAt {
+            Label(certificateStatusText(for: testCertificateExpiresAt), systemImage: "lock.fill")
+                .font(.caption)
+                .foregroundStyle(certificateStatusColor(for: testCertificateExpiresAt))
+        }
+
         if let testErrorMessage {
             Text(testErrorMessage)
                 .font(.caption)
@@ -202,6 +209,7 @@ struct EndpointFormView: View {
         }
         isTesting = true
         testErrorMessage = nil
+        testCertificateExpiresAt = nil
         defer { isTesting = false }
 
         switch await HealthCheckService.performRequest(url: url, timeout: Self.testTimeout) {
@@ -217,6 +225,10 @@ struct EndpointFormView: View {
                 testIsJSON = false
                 testFlattenedFields = []
             }
+            if url.scheme?.lowercased() == "https", let host = url.host {
+                testCertificateExpiresAt = await HealthCheckService.fetchCertificateExpiry(
+                    host: host, port: UInt16(url.port ?? 443), timeout: Self.testTimeout)
+            }
         case .failure(let error):
             testStatusCode = nil
             testElapsedMs = nil
@@ -225,6 +237,18 @@ struct EndpointFormView: View {
             testFlattenedFields = []
             testErrorMessage = error.displayMessage
         }
+    }
+
+    private func certificateStatusText(for expiry: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        let days = HealthCheckService.daysUntilExpiry(expiry)
+        let dateText = formatter.string(from: expiry)
+        return days >= 0 ? "Certificate valid until \(dateText) (\(days)d)" : "Certificate expired \(dateText)"
+    }
+
+    private func certificateStatusColor(for expiry: Date) -> Color {
+        HealthCheckService.isExpiringSoon(expiry, thresholdDays: 14) ? .orange : .secondary
     }
 
     // MARK: - Save
