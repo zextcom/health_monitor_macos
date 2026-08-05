@@ -22,8 +22,7 @@ struct EndpointFormView: View {
     @State private var expectedStatusCode: String
     @State private var useCustomInterval: Bool
     @State private var customInterval: String
-    @State private var jsonFieldPath: String
-    @State private var expectedFieldValue: String
+    @State private var assertions: [JSONAssertion]
     @State private var errorMessage: String?
 
     @State private var authType: AuthType
@@ -49,8 +48,7 @@ struct EndpointFormView: View {
         _expectedStatusCode = State(initialValue: String(endpoint?.expectedStatusCode ?? 200))
         _useCustomInterval = State(initialValue: endpoint?.checkIntervalOverride != nil)
         _customInterval = State(initialValue: endpoint?.checkIntervalOverride.map { String(Int($0)) } ?? "")
-        _jsonFieldPath = State(initialValue: endpoint?.jsonFieldPath ?? "")
-        _expectedFieldValue = State(initialValue: endpoint?.expectedFieldValue ?? "")
+        _assertions = State(initialValue: endpoint?.jsonAssertions ?? [])
         _authType = State(initialValue: endpoint?.authType ?? .none)
         _authUsername = State(initialValue: endpoint?.authUsername ?? "")
         _authHeaderName = State(initialValue: endpoint?.authHeaderName ?? "")
@@ -94,9 +92,26 @@ struct EndpointFormView: View {
                 }
 
                 Section {
-                    TextField("JSON field", text: $jsonFieldPath, prompt: Text("data.status"))
-                    TextField("Expected value", text: $expectedFieldValue, prompt: Text("healthy"))
-                    Text("Leave blank to check only the HTTP status code. A dot-separated field path is looked up in the JSON body, e.g. data.status.")
+                    ForEach($assertions) { $assertion in
+                        HStack {
+                            TextField("JSON field", text: $assertion.path, prompt: Text("data.status"))
+                            TextField("Expected value", text: $assertion.expectedValue, prompt: Text("healthy"))
+                            Button {
+                                assertions.removeAll { $0.id == assertion.id }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove assertion")
+                        }
+                    }
+                    Button {
+                        assertions.append(JSONAssertion(path: "", expectedValue: ""))
+                    } label: {
+                        Label("Add Assertion", systemImage: "plus")
+                    }
+                    Text("All assertions below must match (AND) for the endpoint to be considered healthy. Leave the list empty to check only the HTTP status code. A dot-separated field path is looked up in the JSON body, e.g. data.status.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let evaluation = livePreview {
@@ -234,8 +249,11 @@ struct EndpointFormView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(testFlattenedFields) { field in
                         Button {
-                            jsonFieldPath = field.path
-                            expectedFieldValue = field.value
+                            if let index = assertions.firstIndex(where: { $0.path == field.path }) {
+                                assertions[index].expectedValue = field.value
+                            } else {
+                                assertions.append(JSONAssertion(path: field.path, expectedValue: field.value))
+                            }
                         } label: {
                             HStack {
                                 Text(field.path)
@@ -267,17 +285,15 @@ struct EndpointFormView: View {
         return url.scheme != nil
     }
 
-    /// Returns (label, symbol, color) describing whether the current jsonFieldPath/expectedFieldValue
-    /// would evaluate as healthy against the last test response, without firing a new request.
+    /// Returns (label, symbol, color) describing whether the current assertions would evaluate as
+    /// healthy against the last test response, without firing a new request.
     private var livePreview: (String, String, Color)? {
-        guard let testJSON,
-              !jsonFieldPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let actualValue = HealthCheckService.extractValue(from: testJSON, path: jsonFieldPath.trimmingCharacters(in: .whitespacesAndNewlines))
-        else { return nil }
-        let matches = HealthCheckService.evaluate(actualValue: actualValue, expectedValue: expectedFieldValue)
-        return matches
+        let nonBlank = assertions.filter { !$0.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard let testJSON, !nonBlank.isEmpty else { return nil }
+        let (passed, reason) = HealthCheckService.evaluateAssertions(json: testJSON, assertions: nonBlank)
+        return passed
             ? ("Would currently evaluate as Healthy", "checkmark.circle.fill", .green)
-            : ("Would currently evaluate as Down (\(actualValue))", "xmark.circle.fill", .red)
+            : ("Would currently evaluate as Down (\(reason ?? "assertion failed"))", "xmark.circle.fill", .red)
     }
 
     private func runTest() async {
@@ -375,16 +391,24 @@ struct EndpointFormView: View {
             secretUpdate = .unchanged // editing, left blank, auth type unchanged: keep existing secret
         }
 
-        let trimmedPath = jsonFieldPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedValue = expectedFieldValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleanedAssertions: [JSONAssertion] = []
+        for assertion in assertions {
+            let path = assertion.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = assertion.expectedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.isEmpty, value.isEmpty { continue } // fully blank row, drop silently
+            guard !path.isEmpty, !value.isEmpty else {
+                errorMessage = "Each JSON assertion needs both a field path and an expected value"
+                return
+            }
+            cleanedAssertions.append(JSONAssertion(id: assertion.id, path: path, expectedValue: value))
+        }
 
         var endpoint = originalEndpoint ?? Endpoint(name: trimmedName, url: url)
         endpoint.name = trimmedName
         endpoint.url = url
         endpoint.expectedStatusCode = statusCode
         endpoint.checkIntervalOverride = interval
-        endpoint.jsonFieldPath = trimmedPath.isEmpty ? nil : trimmedPath
-        endpoint.expectedFieldValue = trimmedValue.isEmpty ? nil : trimmedValue
+        endpoint.jsonAssertions = cleanedAssertions
         endpoint.authType = authType
         endpoint.authUsername = authType == .basicAuth ? authUsername.trimmingCharacters(in: .whitespacesAndNewlines) : nil
         endpoint.authHeaderName = authType == .customHeader ? authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines) : nil

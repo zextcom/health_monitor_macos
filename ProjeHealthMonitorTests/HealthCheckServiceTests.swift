@@ -43,15 +43,13 @@ final class HealthCheckServiceTests: XCTestCase {
 
     private func makeEndpoint(
         expectedStatusCode: Int = 200,
-        jsonFieldPath: String? = nil,
-        expectedFieldValue: String? = nil
+        jsonAssertions: [JSONAssertion] = []
     ) -> Endpoint {
         Endpoint(
             name: "Test",
             url: URL(string: "https://example.test/health")!,
             expectedStatusCode: expectedStatusCode,
-            jsonFieldPath: jsonFieldPath,
-            expectedFieldValue: expectedFieldValue
+            jsonAssertions: jsonAssertions
         )
     }
 
@@ -81,7 +79,7 @@ final class HealthCheckServiceTests: XCTestCase {
             let body = #"{"success":true,"data":{"status":"healthy","database":true}}"#
             return (response, Data(body.utf8))
         }
-        let endpoint = makeEndpoint(jsonFieldPath: "data.status", expectedFieldValue: "healthy")
+        let endpoint = makeEndpoint(jsonAssertions: [JSONAssertion(path: "data.status", expectedValue: "healthy")])
         let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
         XCTAssertTrue(result.isHealthy)
     }
@@ -92,10 +90,116 @@ final class HealthCheckServiceTests: XCTestCase {
             let body = #"{"success":true,"data":{"status":"degraded"}}"#
             return (response, Data(body.utf8))
         }
-        let endpoint = makeEndpoint(jsonFieldPath: "data.status", expectedFieldValue: "healthy")
+        let endpoint = makeEndpoint(jsonAssertions: [JSONAssertion(path: "data.status", expectedValue: "healthy")])
         let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
         XCTAssertFalse(result.isHealthy)
         XCTAssertNotNil(result.failureReason)
+    }
+
+    func testHealthyWhenAllAssertionsMatch() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = #"{"data":{"status":"healthy","database":true}}"#
+            return (response, Data(body.utf8))
+        }
+        let endpoint = makeEndpoint(jsonAssertions: [
+            JSONAssertion(path: "data.status", expectedValue: "healthy"),
+            JSONAssertion(path: "data.database", expectedValue: "true"),
+        ])
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
+        XCTAssertTrue(result.isHealthy)
+    }
+
+    func testDownWhenSecondAssertionFails() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = #"{"data":{"status":"healthy","database":false}}"#
+            return (response, Data(body.utf8))
+        }
+        let endpoint = makeEndpoint(jsonAssertions: [
+            JSONAssertion(path: "data.status", expectedValue: "healthy"),
+            JSONAssertion(path: "data.database", expectedValue: "true"),
+        ])
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, session: session)
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertEqual(result.failureReason, "\"data.database\" = false, expected true")
+    }
+
+    func testHealthyWithEmptyAssertionListChecksStatusCodeOnly() async {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data("not json at all".utf8))
+        }
+        let result = await HealthCheckService.executeCheck(endpoint: makeEndpoint(), timeout: 5, session: session)
+        XCTAssertTrue(result.isHealthy)
+    }
+
+    // MARK: - evaluateAssertions (pure)
+
+    func testEvaluateAssertionsPassesWhenAllMatch() {
+        let json: Any = ["data": ["status": "healthy", "database": true]]
+        let assertions = [
+            JSONAssertion(path: "data.status", expectedValue: "healthy"),
+            JSONAssertion(path: "data.database", expectedValue: "true"),
+        ]
+        let (passed, reason) = HealthCheckService.evaluateAssertions(json: json, assertions: assertions)
+        XCTAssertTrue(passed)
+        XCTAssertNil(reason)
+    }
+
+    func testEvaluateAssertionsFailsOnMissingField() {
+        let json: Any = ["data": ["status": "healthy"]]
+        let assertions = [JSONAssertion(path: "data.missing", expectedValue: "x")]
+        let (passed, reason) = HealthCheckService.evaluateAssertions(json: json, assertions: assertions)
+        XCTAssertFalse(passed)
+        XCTAssertEqual(reason, "Field \"data.missing\" not found")
+    }
+
+    func testEvaluateAssertionsWithEmptyListPasses() {
+        let (passed, reason) = HealthCheckService.evaluateAssertions(json: ["a": "b"], assertions: [])
+        XCTAssertTrue(passed)
+        XCTAssertNil(reason)
+    }
+
+    // MARK: - Legacy single-assertion schema migration
+
+    func testDecodingLegacySchemaMigratesToSingleAssertion() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200,
+            "jsonFieldPath": "data.status",
+            "expectedFieldValue": "healthy"
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(endpoint.jsonAssertions.count, 1)
+        XCTAssertEqual(endpoint.jsonAssertions.first?.path, "data.status")
+        XCTAssertEqual(endpoint.jsonAssertions.first?.expectedValue, "healthy")
+    }
+
+    func testDecodingLegacySchemaWithoutJsonFieldsYieldsEmptyAssertions() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertTrue(endpoint.jsonAssertions.isEmpty)
+    }
+
+    func testEncodingRoundTripsThroughNewSchema() throws {
+        var endpoint = makeEndpoint(jsonAssertions: [JSONAssertion(path: "data.status", expectedValue: "healthy")])
+        endpoint.name = "Round Trip"
+        let data = try JSONEncoder().encode(endpoint)
+        let decoded = try JSONDecoder().decode(Endpoint.self, from: data)
+        XCTAssertEqual(decoded.jsonAssertions, endpoint.jsonAssertions)
+        XCTAssertEqual(decoded.name, "Round Trip")
     }
 
     func testDownOnNetworkTimeout() async {

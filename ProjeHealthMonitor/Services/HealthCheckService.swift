@@ -205,20 +205,15 @@ final class HealthCheckService: ObservableObject {
                                           failureReason: "Expected status \(endpoint.expectedStatusCode), got \(raw.statusCode)")
             }
 
-            if let path = endpoint.jsonFieldPath?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+            if !endpoint.jsonAssertions.isEmpty {
                 guard let json = try? JSONSerialization.jsonObject(with: raw.data) else {
                     return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
                                               responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: "Could not parse JSON")
                 }
-                guard let actualValue = extractValue(from: json, path: path) else {
+                let (passed, reason) = evaluateAssertions(json: json, assertions: endpoint.jsonAssertions)
+                guard passed else {
                     return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                              responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode,
-                                              failureReason: "Field \"\(path)\" not found")
-                }
-                guard evaluate(actualValue: actualValue, expectedValue: endpoint.expectedFieldValue) else {
-                    return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                              responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode,
-                                              failureReason: "\"\(path)\" = \(actualValue), expected \(endpoint.expectedFieldValue ?? "")")
+                                              responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: reason)
                 }
             }
 
@@ -256,6 +251,21 @@ final class HealthCheckService: ObservableObject {
         let expected = (expectedValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let actual = actualValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return actual == expected
+    }
+
+    /// Evaluates all assertions against `json` with AND semantics — the first failing assertion
+    /// (missing field or mismatched value) short-circuits with its reason, mirroring the single-
+    /// assertion failure messages `executeCheck` produced before multi-assertion support.
+    nonisolated static func evaluateAssertions(json: Any, assertions: [JSONAssertion]) -> (passed: Bool, failureReason: String?) {
+        for assertion in assertions {
+            guard let actual = extractValue(from: json, path: assertion.path) else {
+                return (false, "Field \"\(assertion.path)\" not found")
+            }
+            guard evaluate(actualValue: actual, expectedValue: assertion.expectedValue) else {
+                return (false, "\"\(assertion.path)\" = \(actual), expected \(assertion.expectedValue)")
+            }
+        }
+        return (true, nil)
     }
 
     /// Builds the HTTP header(s) for `type` given the (already-resolved) `secret`. Returns an
