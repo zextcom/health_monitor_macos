@@ -24,5 +24,13 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/zextcom/health_monitor_ios/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>dhlccRKzcLzfJRxhDlLR6IFnBH7M2RyDGQvPspQFVLk=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

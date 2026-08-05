@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor
+
+      - name: Build (Release, ad-hoc signed)
+        run: |
+          xcodebuild \
+            -project ProjeHealthMonitor.xcodeproj \
+            -scheme ProjeHealthMonitor \
+            -configuration Release \
+            -derivedDataPath build \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Zip app
+        id: zip
+        run: |
+          APP_PATH="build/Build/Products/Release/ProjeHealthMonitor.app"
+          ZIP_NAME="ProjeHealthMonitor-${{ steps.version.outputs.tag }}.zip"
+          mkdir -p release-archives
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-archives/$ZIP_NAME"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Locate Sparkle CLI tools
+        id: sparkle
+        run: |
+          BIN=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path "*artifacts/sparkle/Sparkle/bin" | head -1)
+          if [ -z "$BIN" ]; then
+            echo "Could not locate Sparkle's bin directory after package resolution" >&2
+            exit 1
+          fi
+          echo "bin=$BIN" >> "$GITHUB_OUTPUT"
+
+      - name: Generate signed appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          echo "$SPARKLE_PRIVATE_KEY" | "${{ steps.sparkle.outputs.bin }}/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/" \
+            release-archives
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "release-archives/${{ steps.zip.outputs.zip_name }}" \
+            "release-archives/appcast.xml" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes

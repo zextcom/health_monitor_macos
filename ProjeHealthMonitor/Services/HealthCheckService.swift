@@ -68,7 +68,7 @@ final class HealthCheckService: ObservableObject {
 
     private func performCheck(_ endpoint: Endpoint) async {
         let previousResult = historyStore.lastResult(for: endpoint.id)
-        let secret = SecretStore.secret(for: endpoint.id)
+        let secret = SecretStore.secret(for: endpoint.id.uuidString)
         var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
         result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
         historyStore.record(result)

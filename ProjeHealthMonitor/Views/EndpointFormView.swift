@@ -197,7 +197,7 @@ struct EndpointFormView: View {
         let trimmed = authSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         if let originalEndpoint, originalEndpoint.authType != .none {
-            return SecretStore.secret(for: originalEndpoint.id)
+            return SecretStore.secret(for: originalEndpoint.id.uuidString)
         }
         return nil
     }

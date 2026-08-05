@@ -390,18 +390,18 @@ final class HealthCheckServiceTests: XCTestCase {
 
 final class SecretStoreTests: XCTestCase {
     func testSetSecretThenReadReturnsSameValue() {
-        let id = UUID()
+        let id = UUID().uuidString
         defer { SecretStore.deleteSecret(for: id) }
         SecretStore.setSecret("hunter2", for: id)
         XCTAssertEqual(SecretStore.secret(for: id), "hunter2")
     }
 
     func testSecretForUnknownIdIsNil() {
-        XCTAssertNil(SecretStore.secret(for: UUID()))
+        XCTAssertNil(SecretStore.secret(for: UUID().uuidString))
     }
 
     func testDeleteSecretRemovesIt() {
-        let id = UUID()
+        let id = UUID().uuidString
         SecretStore.setSecret("temp", for: id)
         XCTAssertNotNil(SecretStore.secret(for: id))
         SecretStore.deleteSecret(for: id)
@@ -409,7 +409,7 @@ final class SecretStoreTests: XCTestCase {
     }
 
     func testSetSecretOverwritesPreviousValue() {
-        let id = UUID()
+        let id = UUID().uuidString
         defer { SecretStore.deleteSecret(for: id) }
         SecretStore.setSecret("first", for: id)
         SecretStore.setSecret("second", for: id)
@@ -417,9 +417,15 @@ final class SecretStoreTests: XCTestCase {
     }
 
     func testSetEmptySecretClearsIt() {
-        let id = UUID()
+        let id = UUID().uuidString
         SecretStore.setSecret("first", for: id)
         SecretStore.setSecret("", for: id)
         XCTAssertNil(SecretStore.secret(for: id))
+    }
+
+    func testNonUUIDAccountKeyWorks() {
+        defer { SecretStore.deleteSecret(for: SecretStore.updateTokenAccount) }
+        SecretStore.setSecret("ghp_faketoken", for: SecretStore.updateTokenAccount)
+        XCTAssertEqual(SecretStore.secret(for: SecretStore.updateTokenAccount), "ghp_faketoken")
     }
 }

@@ -16,6 +16,7 @@
 		524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */; };
 		7518E34BAF856BECCC6AFA8E /* EndpointFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4226E59C5529BA2094C44102 /* EndpointFormView.swift */; };
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
+		781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 9206A9B4E24ED8C577CD938F /* Sparkle */; };
 		9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25498AFC902EA8B18A25E00 /* NotificationService.swift */; };
 		A3F9C2736A085D5BA7038D44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DBAEBF4C3A95465854C98B90 /* Assets.xcassets */; };
 		A40CB9FE8C2CFB516D09D05F /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79481FDD2DC03E69C6F3CA5A /* SparklineView.swift */; };
@@ -23,6 +24,7 @@
 		B8C0F84C166C45CC9712CC6F /* HealthHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */; };
 		BEED349737875757DC65C88B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */; };
 		C0E8D2EC3356DB7FCBC51B3B /* HealthCheckServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */; };
+		C2057D68887A567B081E9F44 /* UpdaterViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */; };
 		CFB40F8394FBA708BA20E201 /* HealthCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */; };
 		E3D8FD8E147162C23DE97C22 /* EndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */; };
 /* End PBXBuildFile section */
@@ -51,6 +53,7 @@
 		7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStore.swift; sourceTree = "<group>"; };
 		9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckService.swift; sourceTree = "<group>"; };
 		99625928DAA517E46B40E9CC /* PopoverContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverContentView.swift; sourceTree = "<group>"; };
+		9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterViewModel.swift; sourceTree = "<group>"; };
 		A7F0751012E31CFF8AB4E08F /* ProjeHealthMonitorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProjeHealthMonitorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3FB0D781531F0E4B8B131BC /* ProjeHealthMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjeHealthMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D25498AFC902EA8B18A25E00 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -61,6 +64,17 @@
 		FEE21C47ACEF036897E38750 /* Endpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoint.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		22258DB3FA4E25C9A3055147 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
 		12D3D54577D6F26BC280B2BB /* Services */ = {
 			isa = PBXGroup;
@@ -70,6 +84,7 @@
 				57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */,
 				D25498AFC902EA8B18A25E00 /* NotificationService.swift */,
 				19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */,
+				9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -162,12 +177,16 @@
 			buildPhases = (
 				E42901FB4B0DC4BE3830958B /* Sources */,
 				E50B28B01C038E9BA3CD189F /* Resources */,
+				22258DB3FA4E25C9A3055147 /* Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = ProjeHealthMonitor;
+			packageProductDependencies = (
+				9206A9B4E24ED8C577CD938F /* Sparkle */,
+			);
 			productName = ProjeHealthMonitor;
 			productReference = C3FB0D781531F0E4B8B131BC /* ProjeHealthMonitor.app */;
 			productType = "com.apple.product-type.application";
@@ -195,6 +214,9 @@
 				en,
 			);
 			mainGroup = 44BACD2D00283BC1627D5E3A;
+			packageReferences = (
+				892E4DFD7F2E255490CB2DE6 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -244,6 +266,7 @@
 				4871914C2C5EE4949449CF73 /* SecretStore.swift in Sources */,
 				BEED349737875757DC65C88B /* SettingsView.swift in Sources */,
 				A40CB9FE8C2CFB516D09D05F /* SparklineView.swift in Sources */,
+				C2057D68887A567B081E9F44 /* UpdaterViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -492,6 +515,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		892E4DFD7F2E255490CB2DE6 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9206A9B4E24ED8C577CD938F /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 892E4DFD7F2E255490CB2DE6 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6748F4B66E5A8ED7FD9FD9BA /* Project object */;
 }

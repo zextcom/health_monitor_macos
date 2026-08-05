@@ -3,10 +3,12 @@ import ServiceManagement
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
+    @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var editingEndpoint: Endpoint?
     @State private var isPresentingForm = false
     @State private var launchAtLoginError: String?
     @State private var intervalSelection: IntervalSelection = .preset(60)
+    @State private var githubToken: String = ""
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -21,6 +23,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             endpointsTab
                 .tabItem { Label("Endpoints", systemImage: "network") }
+            updatesTab
+                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
@@ -29,8 +33,8 @@ struct SettingsView: View {
             EndpointFormView(endpoint: editingEndpoint) { result in
                 if case .save(let endpoint, let secretUpdate) = result {
                     switch secretUpdate {
-                    case .set(let value): SecretStore.setSecret(value, for: endpoint.id)
-                    case .cleared: SecretStore.deleteSecret(for: endpoint.id)
+                    case .set(let value): SecretStore.setSecret(value, for: endpoint.id.uuidString)
+                    case .cleared: SecretStore.deleteSecret(for: endpoint.id.uuidString)
                     case .unchanged: break
                     }
                     if endpointStore.endpoints.contains(where: { $0.id == endpoint.id }) {
@@ -74,7 +78,7 @@ struct SettingsView: View {
                         for index in indexSet {
                             let id = endpointStore.endpoints[index].id
                             endpointStore.removeEndpoint(id: id)
-                            SecretStore.deleteSecret(for: id)
+                            SecretStore.deleteSecret(for: id.uuidString)
                         }
                     }
                 }
@@ -175,6 +179,59 @@ struct SettingsView: View {
                     launchAtLoginError = error.localizedDescription
                 }
             }
+        )
+    }
+
+    // MARK: - Updates
+
+    private var updatesTab: some View {
+        Form {
+            Section {
+                Toggle("Automatically check for updates", isOn: automaticallyChecksBinding)
+                HStack {
+                    Button("Check for Updates Now") {
+                        updaterViewModel.checkForUpdates()
+                    }
+                    .disabled(!updaterViewModel.canCheckForUpdates)
+                    Spacer()
+                }
+            } header: {
+                Label("Software Updates", systemImage: "arrow.down.circle")
+            }
+
+            Section {
+                SecureField(hasStoredToken ? "Token saved — leave blank to keep it" : "GitHub Personal Access Token", text: $githubToken)
+                HStack {
+                    Button("Save Token") {
+                        updaterViewModel.updateToken(githubToken)
+                        githubToken = ""
+                    }
+                    .disabled(githubToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if hasStoredToken {
+                        Button("Remove Token", role: .destructive) {
+                            updaterViewModel.updateToken(nil)
+                        }
+                    }
+                    Spacer()
+                }
+                Text("Required while the repository is private. Create a fine-grained token scoped to Contents: Read-only for this repo — stored in the macOS Keychain, never in plain-text settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Label("GitHub Access Token", systemImage: "key")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var hasStoredToken: Bool {
+        SecretStore.secret(for: SecretStore.updateTokenAccount) != nil
+    }
+
+    private var automaticallyChecksBinding: Binding<Bool> {
+        Binding(
+            get: { updaterViewModel.automaticallyChecksForUpdates },
+            set: { updaterViewModel.automaticallyChecksForUpdates = $0 }
         )
     }
 

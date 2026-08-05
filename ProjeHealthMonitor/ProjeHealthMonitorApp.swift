@@ -5,6 +5,7 @@ struct ProjeHealthMonitorApp: App {
     @StateObject private var endpointStore: EndpointStore
     @StateObject private var historyStore: HealthHistoryStore
     @StateObject private var healthCheckService: HealthCheckService
+    @StateObject private var updaterViewModel: UpdaterViewModel
 
     init() {
         let endpointStore = EndpointStore()
@@ -19,6 +20,7 @@ struct ProjeHealthMonitorApp: App {
         _endpointStore = StateObject(wrappedValue: endpointStore)
         _historyStore = StateObject(wrappedValue: historyStore)
         _healthCheckService = StateObject(wrappedValue: healthCheckService)
+        _updaterViewModel = StateObject(wrappedValue: UpdaterViewModel())
 
         notificationService.requestAuthorizationIfNeeded()
         healthCheckService.start()
@@ -37,6 +39,7 @@ struct ProjeHealthMonitorApp: App {
         Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(endpointStore)
+                .environmentObject(updaterViewModel)
         }
         .windowResizability(.contentSize)
     }
