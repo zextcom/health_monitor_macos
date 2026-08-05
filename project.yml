@@ -37,8 +37,8 @@ targets:
       properties:
         LSUIElement: true
         CFBundleDisplayName: Health Monitor
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: "© 2026 Zext"
         SUFeedURL: https://github.com/zextcom/health_monitor_ios/releases/latest/download/appcast.xml
         SUScheduledCheckInterval: 86400
