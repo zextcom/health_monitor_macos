@@ -27,7 +27,12 @@ struct SettingsView: View {
         .frame(width: 480, height: 420)
         .sheet(isPresented: $isPresentingForm) {
             EndpointFormView(endpoint: editingEndpoint) { result in
-                if case .save(let endpoint) = result {
+                if case .save(let endpoint, let secretUpdate) = result {
+                    switch secretUpdate {
+                    case .set(let value): SecretStore.setSecret(value, for: endpoint.id)
+                    case .cleared: SecretStore.deleteSecret(for: endpoint.id)
+                    case .unchanged: break
+                    }
                     if endpointStore.endpoints.contains(where: { $0.id == endpoint.id }) {
                         endpointStore.updateEndpoint(endpoint)
                     } else {
@@ -67,7 +72,9 @@ struct SettingsView: View {
                     }
                     .onDelete { indexSet in
                         for index in indexSet {
-                            endpointStore.removeEndpoint(id: endpointStore.endpoints[index].id)
+                            let id = endpointStore.endpoints[index].id
+                            endpointStore.removeEndpoint(id: id)
+                            SecretStore.deleteSecret(for: id)
                         }
                     }
                 }

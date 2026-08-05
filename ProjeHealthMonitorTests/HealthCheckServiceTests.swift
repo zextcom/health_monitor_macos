@@ -223,4 +223,99 @@ final class HealthCheckServiceTests: XCTestCase {
             XCTAssertGreaterThan(expiry, Date())
         }
     }
+
+    // MARK: - Auth headers
+
+    func testAuthHeadersNoneReturnsEmpty() {
+        XCTAssertTrue(HealthCheckService.authHeaders(type: .none, username: nil, secret: "whatever", headerName: nil).isEmpty)
+    }
+
+    func testAuthHeadersWithoutSecretReturnsEmpty() {
+        XCTAssertTrue(HealthCheckService.authHeaders(type: .bearerToken, username: nil, secret: nil, headerName: nil).isEmpty)
+        XCTAssertTrue(HealthCheckService.authHeaders(type: .bearerToken, username: nil, secret: "", headerName: nil).isEmpty)
+    }
+
+    func testAuthHeadersBearerToken() {
+        let headers = HealthCheckService.authHeaders(type: .bearerToken, username: nil, secret: "abc123", headerName: nil)
+        XCTAssertEqual(headers["Authorization"], "Bearer abc123")
+    }
+
+    func testAuthHeadersBasicAuthEncodesCredentials() {
+        let headers = HealthCheckService.authHeaders(type: .basicAuth, username: "alice", secret: "s3cret", headerName: nil)
+        let expected = "Basic " + Data("alice:s3cret".utf8).base64EncodedString()
+        XCTAssertEqual(headers["Authorization"], expected)
+    }
+
+    func testAuthHeadersCustomHeaderUsesGivenName() {
+        let headers = HealthCheckService.authHeaders(type: .customHeader, username: nil, secret: "key-value", headerName: "X-API-Key")
+        XCTAssertEqual(headers["X-API-Key"], "key-value")
+    }
+
+    func testAuthHeadersCustomHeaderWithoutNameReturnsEmpty() {
+        let headers = HealthCheckService.authHeaders(type: .customHeader, username: nil, secret: "key-value", headerName: nil)
+        XCTAssertTrue(headers.isEmpty)
+    }
+
+    func testPerformRequestSendsProvidedHeaders() async {
+        var receivedHeaders: [String: String]?
+        MockURLProtocol.requestHandler = { request in
+            receivedHeaders = request.allHTTPHeaderFields
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data())
+        }
+        _ = await HealthCheckService.performRequest(
+            url: URL(string: "https://example.test/health")!, timeout: 5,
+            headers: ["Authorization": "Bearer abc123"], session: session)
+        XCTAssertEqual(receivedHeaders?["Authorization"], "Bearer abc123")
+    }
+
+    func testExecuteCheckSendsAuthHeaderFromSecretParameter() async {
+        var receivedHeaders: [String: String]?
+        MockURLProtocol.requestHandler = { request in
+            receivedHeaders = request.allHTTPHeaderFields
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data("{}".utf8))
+        }
+        var endpoint = makeEndpoint()
+        endpoint.authType = .bearerToken
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, secret: "tok-1", session: session)
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertEqual(receivedHeaders?["Authorization"], "Bearer tok-1")
+    }
+}
+
+final class SecretStoreTests: XCTestCase {
+    func testSetSecretThenReadReturnsSameValue() {
+        let id = UUID()
+        defer { SecretStore.deleteSecret(for: id) }
+        SecretStore.setSecret("hunter2", for: id)
+        XCTAssertEqual(SecretStore.secret(for: id), "hunter2")
+    }
+
+    func testSecretForUnknownIdIsNil() {
+        XCTAssertNil(SecretStore.secret(for: UUID()))
+    }
+
+    func testDeleteSecretRemovesIt() {
+        let id = UUID()
+        SecretStore.setSecret("temp", for: id)
+        XCTAssertNotNil(SecretStore.secret(for: id))
+        SecretStore.deleteSecret(for: id)
+        XCTAssertNil(SecretStore.secret(for: id))
+    }
+
+    func testSetSecretOverwritesPreviousValue() {
+        let id = UUID()
+        defer { SecretStore.deleteSecret(for: id) }
+        SecretStore.setSecret("first", for: id)
+        SecretStore.setSecret("second", for: id)
+        XCTAssertEqual(SecretStore.secret(for: id), "second")
+    }
+
+    func testSetEmptySecretClearsIt() {
+        let id = UUID()
+        SecretStore.setSecret("first", for: id)
+        SecretStore.setSecret("", for: id)
+        XCTAssertNil(SecretStore.secret(for: id))
+    }
 }

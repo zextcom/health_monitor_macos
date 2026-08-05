@@ -1,8 +1,14 @@
 import SwiftUI
 
 struct EndpointFormView: View {
+    enum SecretUpdate {
+        case unchanged
+        case set(String)
+        case cleared
+    }
+
     enum FormResult {
-        case save(Endpoint)
+        case save(Endpoint, secret: SecretUpdate)
         case cancel
     }
 
@@ -19,6 +25,12 @@ struct EndpointFormView: View {
     @State private var jsonFieldPath: String
     @State private var expectedFieldValue: String
     @State private var errorMessage: String?
+
+    @State private var authType: AuthType
+    @State private var authUsername: String
+    @State private var authHeaderName: String
+    /// Never prefilled from the Keychain — left blank on edit means "keep the existing secret".
+    @State private var authSecret: String = ""
 
     @State private var isTesting = false
     @State private var testStatusCode: Int?
@@ -39,6 +51,9 @@ struct EndpointFormView: View {
         _customInterval = State(initialValue: endpoint?.checkIntervalOverride.map { String(Int($0)) } ?? "")
         _jsonFieldPath = State(initialValue: endpoint?.jsonFieldPath ?? "")
         _expectedFieldValue = State(initialValue: endpoint?.expectedFieldValue ?? "")
+        _authType = State(initialValue: endpoint?.authType ?? .none)
+        _authUsername = State(initialValue: endpoint?.authUsername ?? "")
+        _authHeaderName = State(initialValue: endpoint?.authHeaderName ?? "")
     }
 
     var body: some View {
@@ -64,6 +79,12 @@ struct EndpointFormView: View {
                     }
                 } header: {
                     Label("Check Interval", systemImage: "clock")
+                }
+
+                Section {
+                    authSectionContent
+                } header: {
+                    Label("Authentication", systemImage: "key")
                 }
 
                 Section {
@@ -106,7 +127,64 @@ struct EndpointFormView: View {
             }
             .padding()
         }
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 480, idealHeight: 640, maxHeight: 780)
+        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 480, idealHeight: 680, maxHeight: 820)
+    }
+
+    // MARK: - Authentication section
+
+    @ViewBuilder
+    private var authSectionContent: some View {
+        Picker("Type", selection: $authType) {
+            ForEach(AuthType.allCases) { type in
+                Text(type.displayName).tag(type)
+            }
+        }
+
+        switch authType {
+        case .none:
+            EmptyView()
+        case .bearerToken:
+            SecureField(secretPlaceholder, text: $authSecret)
+        case .basicAuth:
+            TextField("Username", text: $authUsername)
+            SecureField(secretPlaceholder, text: $authSecret)
+        case .customHeader:
+            TextField("Header name", text: $authHeaderName, prompt: Text("X-API-Key"))
+            SecureField(secretPlaceholder, text: $authSecret)
+        }
+
+        if authType != .none {
+            Text(hasExistingSecret
+                ? "Stored in the macOS Keychain. Leave blank to keep the current value."
+                : "Stored in the macOS Keychain, never in plain-text settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var secretPlaceholder: String {
+        switch authType {
+        case .none: return ""
+        case .bearerToken: return "Token"
+        case .basicAuth: return "Password"
+        case .customHeader: return "Header value"
+        }
+    }
+
+    private var hasExistingSecret: Bool {
+        guard let originalEndpoint, originalEndpoint.authType != .none else { return false }
+        return true
+    }
+
+    /// The secret to use for a live "Test Connection" request: whatever's currently typed, or —
+    /// for an existing endpoint left blank — the value already stored in the Keychain.
+    private var effectiveSecretForTesting: String? {
+        let trimmed = authSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if let originalEndpoint, originalEndpoint.authType != .none {
+            return SecretStore.secret(for: originalEndpoint.id)
+        }
+        return nil
     }
 
     // MARK: - Test Connection section
@@ -212,7 +290,10 @@ struct EndpointFormView: View {
         testCertificateExpiresAt = nil
         defer { isTesting = false }
 
-        switch await HealthCheckService.performRequest(url: url, timeout: Self.testTimeout) {
+        let headers = HealthCheckService.authHeaders(type: authType, username: authUsername,
+                                                       secret: effectiveSecretForTesting, headerName: authHeaderName)
+
+        switch await HealthCheckService.performRequest(url: url, timeout: Self.testTimeout, headers: headers) {
         case .success(let raw):
             testStatusCode = raw.statusCode
             testElapsedMs = raw.elapsedMs
@@ -276,6 +357,23 @@ struct EndpointFormView: View {
             }
             interval = seconds
         }
+        if authType == .customHeader, authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Enter a header name for custom header auth"
+            return
+        }
+
+        let trimmedSecret = authSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secretUpdate: SecretUpdate
+        if authType == .none {
+            secretUpdate = hasExistingSecret ? .cleared : .unchanged
+        } else if !trimmedSecret.isEmpty {
+            secretUpdate = .set(trimmedSecret)
+        } else if originalEndpoint == nil || originalEndpoint?.authType != authType {
+            errorMessage = "Enter a value for \(secretPlaceholder.lowercased())"
+            return
+        } else {
+            secretUpdate = .unchanged // editing, left blank, auth type unchanged: keep existing secret
+        }
 
         let trimmedPath = jsonFieldPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedValue = expectedFieldValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -287,7 +385,10 @@ struct EndpointFormView: View {
         endpoint.checkIntervalOverride = interval
         endpoint.jsonFieldPath = trimmedPath.isEmpty ? nil : trimmedPath
         endpoint.expectedFieldValue = trimmedValue.isEmpty ? nil : trimmedValue
+        endpoint.authType = authType
+        endpoint.authUsername = authType == .basicAuth ? authUsername.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        endpoint.authHeaderName = authType == .customHeader ? authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
 
-        onComplete(.save(endpoint))
+        onComplete(.save(endpoint, secret: secretUpdate))
     }
 }

@@ -12,6 +12,7 @@
 		241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99625928DAA517E46B40E9CC /* PopoverContentView.swift */; };
 		31039CA83695ABAB9F95E8CD /* EndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */; };
 		3C1D6920056793ACFC5377AF /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */; };
+		4871914C2C5EE4949449CF73 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */; };
 		524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */; };
 		7518E34BAF856BECCC6AFA8E /* EndpointFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4226E59C5529BA2094C44102 /* EndpointFormView.swift */; };
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
@@ -38,6 +39,7 @@
 
 /* Begin PBXFileReference section */
 		13F4715B5F3D95043E0D4B74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointRowView.swift; sourceTree = "<group>"; };
 		2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4226E59C5529BA2094C44102 /* EndpointFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointFormView.swift; sourceTree = "<group>"; };
@@ -67,6 +69,7 @@
 				9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */,
 				57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */,
 				D25498AFC902EA8B18A25E00 /* NotificationService.swift */,
+				19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -238,6 +241,7 @@
 				9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */,
 				241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */,
 				524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */,
+				4871914C2C5EE4949449CF73 /* SecretStore.swift in Sources */,
 				BEED349737875757DC65C88B /* SettingsView.swift in Sources */,
 				A40CB9FE8C2CFB516D09D05F /* SparklineView.swift in Sources */,
 			);

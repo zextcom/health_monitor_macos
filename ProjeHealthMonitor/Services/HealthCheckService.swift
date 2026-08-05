@@ -68,7 +68,8 @@ final class HealthCheckService: ObservableObject {
 
     private func performCheck(_ endpoint: Endpoint) async {
         let previousResult = historyStore.lastResult(for: endpoint.id)
-        var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout)
+        let secret = SecretStore.secret(for: endpoint.id)
+        var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
         result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
         historyStore.record(result)
 
@@ -160,12 +161,15 @@ final class HealthCheckService: ObservableObject {
     /// status-code/JSON-field evaluation on top) and by the endpoint form's "Test Connection"
     /// flow (which doesn't yet have a fully-configured `Endpoint` to evaluate against).
     nonisolated static func performRequest(
-        url: URL, timeout: TimeInterval, session: URLSession = .shared
+        url: URL, timeout: TimeInterval, headers: [String: String] = [:], session: URLSession = .shared
     ) async -> Result<RawFetchResult, RawFetchError> {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
 
         let start = Date()
         do {
@@ -184,8 +188,13 @@ final class HealthCheckService: ObservableObject {
         }
     }
 
-    nonisolated static func executeCheck(endpoint: Endpoint, timeout: TimeInterval, session: URLSession = .shared) async -> HealthCheckResult {
-        switch await performRequest(url: endpoint.url, timeout: timeout, session: session) {
+    /// `secret` is the bearer token / basic-auth password / custom header value for `endpoint.authType`,
+    /// resolved by the caller (from `SecretStore` in production, from the in-progress form state
+    /// during "Test Connection") — kept as a plain parameter rather than an internal Keychain lookup
+    /// so this stays a pure, easily testable function.
+    nonisolated static func executeCheck(endpoint: Endpoint, timeout: TimeInterval, secret: String? = nil, session: URLSession = .shared) async -> HealthCheckResult {
+        let headers = authHeaders(type: endpoint.authType, username: endpoint.authUsername, secret: secret, headerName: endpoint.authHeaderName)
+        switch await performRequest(url: endpoint.url, timeout: timeout, headers: headers, session: session) {
         case .failure(let error):
             return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
                                       responseTimeMs: error.elapsedMs, statusCode: nil, failureReason: error.displayMessage)
@@ -247,6 +256,26 @@ final class HealthCheckService: ObservableObject {
         let expected = (expectedValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let actual = actualValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return actual == expected
+    }
+
+    /// Builds the HTTP header(s) for `type` given the (already-resolved) `secret`. Returns an
+    /// empty dictionary whenever there's nothing usable to send (no secret, or a `.customHeader`
+    /// without a header name) rather than sending a malformed auth header.
+    nonisolated static func authHeaders(type: AuthType, username: String?, secret: String?, headerName: String?) -> [String: String] {
+        guard let secret, !secret.isEmpty else { return [:] }
+        switch type {
+        case .none:
+            return [:]
+        case .bearerToken:
+            return ["Authorization": "Bearer \(secret)"]
+        case .basicAuth:
+            let credentials = "\(username ?? ""):\(secret)"
+            let encoded = Data(credentials.utf8).base64EncodedString()
+            return ["Authorization": "Basic \(encoded)"]
+        case .customHeader:
+            guard let headerName, !headerName.isEmpty else { return [:] }
+            return [headerName: secret]
+        }
     }
 
     /// Percentage of `results` that were healthy, or `nil` if there's no history yet.
