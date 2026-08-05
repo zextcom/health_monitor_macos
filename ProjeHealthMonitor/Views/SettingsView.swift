@@ -267,7 +267,7 @@ struct SettingsView: View {
     private var appDisplayName: String {
         Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String
             ?? Bundle.main.infoDictionary?["CFBundleName"] as? String
-            ?? "Proje Health Monitor"
+            ?? "Health Monitor"
     }
 
     private var shortVersion: String {

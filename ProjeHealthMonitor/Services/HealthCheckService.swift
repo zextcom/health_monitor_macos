@@ -364,7 +364,7 @@ final class HealthCheckService: ObservableObject {
                 return
             }
             let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tls)
-            let queue = DispatchQueue(label: "com.oneoapps.projehealthmonitor.cert-fetch")
+            let queue = DispatchQueue(label: "com.zext.healthmonitor.cert-fetch")
 
             queue.asyncAfter(deadline: .now() + timeout) {
                 resumer.resumeOnce(nil)

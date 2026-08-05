@@ -9,7 +9,7 @@ import Security
 /// consistent with how `HealthCheckService.executeCheck` already takes a plain `secret: String?`
 /// parameter instead of depending on this type directly.
 enum SecretStore {
-    private static let service = "com.oneoapps.projehealthmonitor.endpointAuth"
+    private static let service = "com.zext.healthmonitor.endpointAuth"
 
     /// Account key for the GitHub Personal Access Token used to authenticate Sparkle's update
     /// checks while the repo is private (see `UpdaterViewModel`).
