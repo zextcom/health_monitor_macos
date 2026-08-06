@@ -8,9 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		072A39C9E79C29B1532B7ED9 /* HealthHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */; };
+		0757EC8D89DCCF506658824E /* DailyStat.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCE13DAFEEABFE4AAA57A58 /* DailyStat.swift */; };
 		11809FDFAAFBF16BBBFD6E2D /* EndpointRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */; };
+		18EE3EF4A13A625015577C58 /* EndpointStatsRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */; };
 		241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99625928DAA517E46B40E9CC /* PopoverContentView.swift */; };
+		292EB5D37A94225B932FD574 /* DailyStatsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */; };
 		31039CA83695ABAB9F95E8CD /* EndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */; };
+		3B28423787220A2AA63370FE /* DailyStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */; };
 		3C1D6920056793ACFC5377AF /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */; };
 		4871914C2C5EE4949449CF73 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */; };
 		524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */; };
@@ -18,6 +22,7 @@
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
 		781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 9206A9B4E24ED8C577CD938F /* Sparkle */; };
 		9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25498AFC902EA8B18A25E00 /* NotificationService.swift */; };
+		A0BC7BFAA69BFA044725CECD /* DailyUptimeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F4CF8AFC5D53FD598C0252 /* DailyUptimeBarView.swift */; };
 		A3F9C2736A085D5BA7038D44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DBAEBF4C3A95465854C98B90 /* Assets.xcassets */; };
 		A40CB9FE8C2CFB516D09D05F /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79481FDD2DC03E69C6F3CA5A /* SparklineView.swift */; };
 		B3CB3EB62A36E255BF982053 /* Endpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE21C47ACEF036897E38750 /* Endpoint.swift */; };
@@ -42,20 +47,25 @@
 /* Begin PBXFileReference section */
 		13F4715B5F3D95043E0D4B74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
+		1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStatsStoreTests.swift; sourceTree = "<group>"; };
 		27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointRowView.swift; sourceTree = "<group>"; };
 		2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4226E59C5529BA2094C44102 /* EndpointFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointFormView.swift; sourceTree = "<group>"; };
 		44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStoreTests.swift; sourceTree = "<group>"; };
 		48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconView.swift; sourceTree = "<group>"; };
 		57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistoryStore.swift; sourceTree = "<group>"; };
+		5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStatsStore.swift; sourceTree = "<group>"; };
 		6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckResult.swift; sourceTree = "<group>"; };
 		79481FDD2DC03E69C6F3CA5A /* SparklineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparklineView.swift; sourceTree = "<group>"; };
 		7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStore.swift; sourceTree = "<group>"; };
 		9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckService.swift; sourceTree = "<group>"; };
+		966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStatsRowView.swift; sourceTree = "<group>"; };
 		99625928DAA517E46B40E9CC /* PopoverContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverContentView.swift; sourceTree = "<group>"; };
 		9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterViewModel.swift; sourceTree = "<group>"; };
 		A7F0751012E31CFF8AB4E08F /* ProjeHealthMonitorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProjeHealthMonitorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3FB0D781531F0E4B8B131BC /* ProjeHealthMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjeHealthMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6F4CF8AFC5D53FD598C0252 /* DailyUptimeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyUptimeBarView.swift; sourceTree = "<group>"; };
+		CDCE13DAFEEABFE4AAA57A58 /* DailyStat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStat.swift; sourceTree = "<group>"; };
 		D25498AFC902EA8B18A25E00 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		DBAEBF4C3A95465854C98B90 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistoryStoreTests.swift; sourceTree = "<group>"; };
@@ -79,6 +89,7 @@
 		12D3D54577D6F26BC280B2BB /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */,
 				7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */,
 				9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */,
 				57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */,
@@ -114,8 +125,10 @@
 		BF5D806E8DEE97677742A028 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				C6F4CF8AFC5D53FD598C0252 /* DailyUptimeBarView.swift */,
 				4226E59C5529BA2094C44102 /* EndpointFormView.swift */,
 				27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */,
+				966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */,
 				48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */,
 				99625928DAA517E46B40E9CC /* PopoverContentView.swift */,
 				2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */,
@@ -127,6 +140,7 @@
 		CC7EDA1338D1E5702183538A /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				CDCE13DAFEEABFE4AAA57A58 /* DailyStat.swift */,
 				FEE21C47ACEF036897E38750 /* Endpoint.swift */,
 				6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */,
 			);
@@ -136,6 +150,7 @@
 		E1AA5DB990C54429860F3A47 /* ProjeHealthMonitorTests */ = {
 			isa = PBXGroup;
 			children = (
+				1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */,
 				44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */,
 				F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */,
 				E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */,
@@ -242,6 +257,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				292EB5D37A94225B932FD574 /* DailyStatsStoreTests.swift in Sources */,
 				31039CA83695ABAB9F95E8CD /* EndpointStoreTests.swift in Sources */,
 				C0E8D2EC3356DB7FCBC51B3B /* HealthCheckServiceTests.swift in Sources */,
 				072A39C9E79C29B1532B7ED9 /* HealthHistoryStoreTests.swift in Sources */,
@@ -252,9 +268,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0757EC8D89DCCF506658824E /* DailyStat.swift in Sources */,
+				3B28423787220A2AA63370FE /* DailyStatsStore.swift in Sources */,
+				A0BC7BFAA69BFA044725CECD /* DailyUptimeBarView.swift in Sources */,
 				B3CB3EB62A36E255BF982053 /* Endpoint.swift in Sources */,
 				7518E34BAF856BECCC6AFA8E /* EndpointFormView.swift in Sources */,
 				11809FDFAAFBF16BBBFD6E2D /* EndpointRowView.swift in Sources */,
+				18EE3EF4A13A625015577C58 /* EndpointStatsRowView.swift in Sources */,
 				E3D8FD8E147162C23DE97C22 /* EndpointStore.swift in Sources */,
 				7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */,
 				CFB40F8394FBA708BA20E201 /* HealthCheckService.swift in Sources */,

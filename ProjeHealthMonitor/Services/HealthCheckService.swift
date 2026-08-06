@@ -16,6 +16,7 @@ final class HealthCheckService: ObservableObject {
 
     private let endpointStore: EndpointStore
     private let historyStore: HealthHistoryStore
+    private let dailyStatsStore: DailyStatsStore
     private let notificationService: NotificationService
     private var loopTask: Task<Void, Never>?
     private var lastCheckedAt: [UUID: Date] = [:]
@@ -28,9 +29,11 @@ final class HealthCheckService: ObservableObject {
     private var certExpiryCache: [UUID: Date?] = [:]
     private var certWarnedFor: Set<UUID> = []
 
-    init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, notificationService: NotificationService) {
+    init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
+         notificationService: NotificationService) {
         self.endpointStore = endpointStore
         self.historyStore = historyStore
+        self.dailyStatsStore = dailyStatsStore
         self.notificationService = notificationService
     }
 
@@ -72,6 +75,8 @@ final class HealthCheckService: ObservableObject {
         var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
         result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
         historyStore.record(result)
+        dailyStatsStore.record(endpointId: endpoint.id, timestamp: result.timestamp, isHealthy: result.isHealthy,
+                                intervalSeconds: endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval)
 
         let wasHealthy = previousResult?.isHealthy
         if wasHealthy == true, !result.isHealthy {

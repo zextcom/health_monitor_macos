@@ -3,6 +3,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
+    @EnvironmentObject var dailyStatsStore: DailyStatsStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var editingEndpoint: Endpoint?
     @State private var isPresentingForm = false
@@ -22,6 +23,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             endpointsTab
                 .tabItem { Label("Endpoints", systemImage: "network") }
+            statsTab
+                .tabItem { Label("Stats", systemImage: "chart.bar") }
             updatesTab
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
             aboutTab
@@ -78,6 +81,7 @@ struct SettingsView: View {
                             let id = endpointStore.endpoints[index].id
                             endpointStore.removeEndpoint(id: id)
                             SecretStore.deleteSecret(for: id.uuidString)
+                            dailyStatsStore.removeStats(for: id)
                         }
                     }
                 }
@@ -179,6 +183,28 @@ struct SettingsView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Stats
+
+    private var statsTab: some View {
+        VStack(spacing: 0) {
+            if endpointStore.endpoints.isEmpty {
+                Spacer()
+                Text("No endpoints added yet")
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                List {
+                    ForEach(endpointStore.endpoints) { endpoint in
+                        EndpointStatsRowView(
+                            endpoint: endpoint,
+                            dailyStats: dailyStatsStore.dailyStats(for: endpoint.id)
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Updates
