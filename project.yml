@@ -27,7 +27,11 @@ targets:
         INFOPLIST_FILE: ProjeHealthMonitor/Info.plist
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
-        ENABLE_HARDENED_RUNTIME: true
+        # Hardened Runtime's library validation rejects loading Sparkle.framework at launch —
+        # it's separately ad-hoc signed (from its own SPM release artifact) and, without a real
+        # Team ID on either side, that never counts as a match. Since we don't notarize, Hardened
+        # Runtime provides no benefit here anyway, only this breakage.
+        ENABLE_HARDENED_RUNTIME: false
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
