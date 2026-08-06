@@ -424,8 +424,9 @@ final class SecretStoreTests: XCTestCase {
     }
 
     func testNonUUIDAccountKeyWorks() {
-        defer { SecretStore.deleteSecret(for: SecretStore.updateTokenAccount) }
-        SecretStore.setSecret("ghp_faketoken", for: SecretStore.updateTokenAccount)
-        XCTAssertEqual(SecretStore.secret(for: SecretStore.updateTokenAccount), "ghp_faketoken")
+        let account = "arbitrary-account-key"
+        defer { SecretStore.deleteSecret(for: account) }
+        SecretStore.setSecret("ghp_faketoken", for: account)
+        XCTAssertEqual(SecretStore.secret(for: account), "ghp_faketoken")
     }
 }

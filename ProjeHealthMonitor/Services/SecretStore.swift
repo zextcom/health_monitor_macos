@@ -1,19 +1,14 @@
 import Foundation
 import Security
 
-/// Stores secrets (endpoint auth tokens/passwords, the GitHub PAT used for update checks while
-/// the repo is private) in the macOS Keychain, keyed by an arbitrary account string. `Endpoint`
-/// itself is plain JSON in `UserDefaults` (see `EndpointStore`), so secrets must never be attached
-/// to it — this is the only place they live. Stateless by design (Keychain is already a global,
-/// thread-safe OS service), so static functions are used rather than an injected instance —
-/// consistent with how `HealthCheckService.executeCheck` already takes a plain `secret: String?`
-/// parameter instead of depending on this type directly.
+/// Stores endpoint auth secrets (tokens/passwords) in the macOS Keychain, keyed by an arbitrary
+/// account string. `Endpoint` itself is plain JSON in `UserDefaults` (see `EndpointStore`), so
+/// secrets must never be attached to it — this is the only place they live. Stateless by design
+/// (Keychain is already a global, thread-safe OS service), so static functions are used rather
+/// than an injected instance — consistent with how `HealthCheckService.executeCheck` already
+/// takes a plain `secret: String?` parameter instead of depending on this type directly.
 enum SecretStore {
     private static let service = "com.zext.healthmonitor.endpointAuth"
-
-    /// Account key for the GitHub Personal Access Token used to authenticate Sparkle's update
-    /// checks while the repo is private (see `UpdaterViewModel`).
-    static let updateTokenAccount = "github-update-token"
 
     static func setSecret(_ value: String, for account: String) {
         deleteSecret(for: account)
