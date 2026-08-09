@@ -92,3 +92,7 @@ The EdDSA key pair was generated once via `generate_keys` (bundled with Sparkle'
 ## Out of Scope (v1)
 
 Remote/cloud sync, multi-user support, Grafana/Prometheus integration, iOS companion app. No Apple Developer Program membership is planned (no notarization) — as a result, downloaded updates remain ad-hoc signed (Gatekeeper may show a warning on first launch).
+
+## License
+
+[MIT](LICENSE)
