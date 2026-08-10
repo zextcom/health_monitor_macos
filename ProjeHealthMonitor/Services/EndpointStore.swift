@@ -9,6 +9,7 @@ final class EndpointStore: ObservableObject {
         static let notifyOnRecovery = "notifyOnRecovery"
         static let launchAtLoginEnabled = "launchAtLoginEnabled"
         static let requestTimeout = "requestTimeout"
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
     }
 
     @Published var endpoints: [Endpoint] {
@@ -28,6 +29,11 @@ final class EndpointStore: ObservableObject {
     }
     @Published var requestTimeout: TimeInterval {
         didSet { defaults.set(requestTimeout, forKey: Keys.requestTimeout) }
+    }
+    /// Set once the app has auto-opened Settings on first launch, so returning users who clear
+    /// their endpoint list don't get it reopened on every launch.
+    @Published var hasCompletedOnboarding: Bool {
+        didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
 
     private let defaults: UserDefaults
@@ -51,6 +57,8 @@ final class EndpointStore: ObservableObject {
 
         let storedTimeout = defaults.double(forKey: Keys.requestTimeout)
         self.requestTimeout = storedTimeout > 0 ? storedTimeout : 10
+
+        self.hasCompletedOnboarding = defaults.object(forKey: Keys.hasCompletedOnboarding) as? Bool ?? false
     }
 
     func addEndpoint(_ endpoint: Endpoint) {
@@ -64,6 +72,27 @@ final class EndpointStore: ObservableObject {
 
     func removeEndpoint(id: UUID) {
         endpoints.removeAll { $0.id == id }
+    }
+
+    /// Endpoint configuration only — no auth secrets (those live in `SecretStore`/Keychain and
+    /// are deliberately excluded from exports so a backup file is safe to share/store).
+    func exportData() -> Data? {
+        try? JSONEncoder().encode(endpoints)
+    }
+
+    /// Merges by endpoint `id`: an imported endpoint whose id matches an existing one restores/
+    /// overwrites it in place, anything else is added. Nothing already in the store is removed —
+    /// importing is additive/restorative, never destructive, so a mis-chosen file can't itself
+    /// cause data loss.
+    func importEndpoints(from data: Data) throws {
+        let imported = try JSONDecoder().decode([Endpoint].self, from: data)
+        for endpoint in imported {
+            if endpoints.contains(where: { $0.id == endpoint.id }) {
+                updateEndpoint(endpoint)
+            } else {
+                addEndpoint(endpoint)
+            }
+        }
     }
 
     private func persistEndpoints() {

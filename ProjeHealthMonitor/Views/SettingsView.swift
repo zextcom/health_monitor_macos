@@ -1,5 +1,7 @@
 import SwiftUI
 import ServiceManagement
+import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
@@ -9,6 +11,7 @@ struct SettingsView: View {
     @State private var isPresentingForm = false
     @State private var launchAtLoginError: String?
     @State private var intervalSelection: IntervalSelection = .preset(60)
+    @State private var endpointFileError: String?
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -87,7 +90,25 @@ struct SettingsView: View {
                 }
             }
             Divider()
+            if let endpointFileError {
+                Text(endpointFileError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+            }
             HStack {
+                Button {
+                    exportEndpoints()
+                } label: {
+                    Label("Export…", systemImage: "square.and.arrow.up")
+                }
+                .disabled(endpointStore.endpoints.isEmpty)
+                Button {
+                    importEndpoints()
+                } label: {
+                    Label("Import…", systemImage: "square.and.arrow.down")
+                }
                 Spacer()
                 Button {
                     editingEndpoint = nil
@@ -97,6 +118,43 @@ struct SettingsView: View {
                 }
             }
             .padding()
+            Text("Export/import saves endpoint configuration only — authentication secrets aren't included and must be re-entered after import.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private func exportEndpoints() {
+        guard let data = endpointStore.exportData() else {
+            endpointFileError = "Couldn't prepare endpoints for export"
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "health-monitor-endpoints.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+            endpointFileError = nil
+        } catch {
+            endpointFileError = "Couldn't save file: \(error.localizedDescription)"
+        }
+    }
+
+    private func importEndpoints() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            try endpointStore.importEndpoints(from: data)
+            endpointFileError = nil
+        } catch {
+            endpointFileError = "Couldn't import file: \(error.localizedDescription)"
         }
     }
 

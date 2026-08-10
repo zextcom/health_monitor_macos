@@ -29,6 +29,15 @@ final class EndpointStoreTests: XCTestCase {
         XCTAssertTrue(store.notifyOnRecovery)
         XCTAssertFalse(store.launchAtLoginEnabled)
         XCTAssertEqual(store.requestTimeout, 10)
+        XCTAssertFalse(store.hasCompletedOnboarding)
+    }
+
+    @MainActor func testOnboardingFlagPersistsAcrossStoreInstances() {
+        let first = EndpointStore(defaults: defaults)
+        first.hasCompletedOnboarding = true
+
+        let second = EndpointStore(defaults: defaults)
+        XCTAssertTrue(second.hasCompletedOnboarding)
     }
 
     @MainActor func testAddUpdateRemoveEndpoint() {
@@ -76,5 +85,62 @@ final class EndpointStoreTests: XCTestCase {
         XCTAssertFalse(second.notificationsEnabled)
         XCTAssertFalse(second.notifyOnRecovery)
         XCTAssertEqual(second.requestTimeout, 20)
+    }
+
+    @MainActor func testExportDataRoundTripsThroughDecode() throws {
+        let store = EndpointStore(defaults: defaults)
+        store.addEndpoint(makeEndpoint(name: "A"))
+        store.addEndpoint(makeEndpoint(name: "B"))
+
+        let data = try XCTUnwrap(store.exportData())
+        let decoded = try JSONDecoder().decode([Endpoint].self, from: data)
+        XCTAssertEqual(decoded, store.endpoints)
+    }
+
+    @MainActor func testImportAddsNewEndpoints() throws {
+        let store = EndpointStore(defaults: defaults)
+        store.addEndpoint(makeEndpoint(name: "Existing"))
+
+        let incoming = [makeEndpoint(name: "Imported")]
+        let data = try JSONEncoder().encode(incoming)
+
+        try store.importEndpoints(from: data)
+
+        XCTAssertEqual(store.endpoints.count, 2)
+        XCTAssertTrue(store.endpoints.contains { $0.name == "Imported" })
+        XCTAssertTrue(store.endpoints.contains { $0.name == "Existing" })
+    }
+
+    @MainActor func testImportRestoresExistingEndpointByID() throws {
+        let store = EndpointStore(defaults: defaults)
+        let original = makeEndpoint(name: "Original")
+        store.addEndpoint(original)
+        store.removeEndpoint(id: original.id) // simulate accidental deletion
+
+        let data = try JSONEncoder().encode([original])
+        try store.importEndpoints(from: data)
+
+        XCTAssertEqual(store.endpoints.count, 1)
+        XCTAssertEqual(store.endpoints.first?.id, original.id)
+        XCTAssertEqual(store.endpoints.first?.name, "Original")
+    }
+
+    @MainActor func testImportUpdatesEndpointWithMatchingID() throws {
+        let store = EndpointStore(defaults: defaults)
+        var endpoint = makeEndpoint(name: "Old Name")
+        store.addEndpoint(endpoint)
+
+        endpoint.name = "New Name"
+        let data = try JSONEncoder().encode([endpoint])
+        try store.importEndpoints(from: data)
+
+        XCTAssertEqual(store.endpoints.count, 1)
+        XCTAssertEqual(store.endpoints.first?.name, "New Name")
+    }
+
+    @MainActor func testImportThrowsOnInvalidData() {
+        let store = EndpointStore(defaults: defaults)
+        let garbage = Data("not json".utf8)
+        XCTAssertThrowsError(try store.importEndpoints(from: garbage))
     }
 }

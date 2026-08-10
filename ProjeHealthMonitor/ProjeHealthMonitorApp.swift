@@ -37,6 +37,7 @@ struct ProjeHealthMonitorApp: App {
                 .environmentObject(historyStore)
         } label: {
             MenuBarIconView(status: healthCheckService.overallStatus)
+                .environmentObject(endpointStore)
         }
         .menuBarExtraStyle(.window)
 
