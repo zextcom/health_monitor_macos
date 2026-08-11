@@ -198,6 +198,10 @@ final class HealthCheckService: ObservableObject {
     /// during "Test Connection") — kept as a plain parameter rather than an internal Keychain lookup
     /// so this stays a pure, easily testable function.
     nonisolated static func executeCheck(endpoint: Endpoint, timeout: TimeInterval, secret: String? = nil, session: URLSession = .shared) async -> HealthCheckResult {
+        if endpoint.checkType == .tcp {
+            return await executeTCPCheck(endpoint: endpoint, timeout: timeout)
+        }
+
         let headers = authHeaders(type: endpoint.authType, username: endpoint.authUsername, secret: secret, headerName: endpoint.authHeaderName)
         switch await performRequest(url: endpoint.url, timeout: timeout, headers: headers, session: session) {
         case .failure(let error):
@@ -227,6 +231,19 @@ final class HealthCheckService: ObservableObject {
         }
     }
 
+    /// `.tcp` endpoints store their target as `endpoint.url` in `tcp://host:port` form (see
+    /// `Endpoint.checkType`) rather than an HTTP URL — no status code, JSON assertions, or auth apply.
+    private nonisolated static func executeTCPCheck(endpoint: Endpoint, timeout: TimeInterval) async -> HealthCheckResult {
+        guard let host = endpoint.url.host, let port = endpoint.url.port, let nwPort = UInt16(exactly: port) else {
+            return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
+                                      responseTimeMs: nil, statusCode: nil, failureReason: "Invalid TCP target — host and port required")
+        }
+        let result = await performTCPConnect(host: host, port: nwPort, timeout: timeout)
+        return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: result.success,
+                                  responseTimeMs: result.elapsedMs, statusCode: nil,
+                                  failureReason: result.success ? nil : (result.errorMessage ?? "Connection failed"))
+    }
+
     // MARK: - JSON path resolution / discovery
 
     /// Resolves a dot-separated path (e.g. "data.status") against a JSONSerialization object graph,
@@ -251,11 +268,23 @@ final class HealthCheckService: ObservableObject {
         return nil
     }
 
-    /// Trimmed, case-insensitive comparison shared by `executeCheck` and the form's live preview.
-    nonisolated static func evaluate(actualValue: String, expectedValue: String?) -> Bool {
-        let expected = (expectedValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let actual = actualValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return actual == expected
+    /// Trimmed comparison shared by `executeCheck` and the form's live preview. `.regex` never
+    /// throws on a malformed pattern — it just evaluates as no match (`try?`).
+    nonisolated static func evaluate(actualValue: String, expectedValue: String?, mode: MatchMode = .exact) -> Bool {
+        let expected = (expectedValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let actual = actualValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch mode {
+        case .exact:
+            return actual.lowercased() == expected.lowercased()
+        case .contains:
+            return actual.localizedCaseInsensitiveContains(expected)
+        case .regex:
+            guard let regex = try? NSRegularExpression(pattern: expected, options: [.caseInsensitive]) else {
+                return false
+            }
+            let range = NSRange(actual.startIndex..., in: actual)
+            return regex.firstMatch(in: actual, options: [], range: range) != nil
+        }
     }
 
     /// Evaluates all assertions against `json` with AND semantics — the first failing assertion
@@ -266,7 +295,7 @@ final class HealthCheckService: ObservableObject {
             guard let actual = extractValue(from: json, path: assertion.path) else {
                 return (false, "Field \"\(assertion.path)\" not found")
             }
-            guard evaluate(actualValue: actual, expectedValue: assertion.expectedValue) else {
+            guard evaluate(actualValue: actual, expectedValue: assertion.expectedValue, mode: assertion.matchMode) else {
                 return (false, "\"\(assertion.path)\" = \(actual), expected \(assertion.expectedValue)")
             }
         }
@@ -416,5 +445,72 @@ final class HealthCheckService: ObservableObject {
     nonisolated static func isExpiringSoon(_ expiryDate: Date?, thresholdDays: Int, now: Date = Date()) -> Bool {
         guard let expiryDate else { return false }
         return daysUntilExpiry(expiryDate, from: now) <= thresholdDays
+    }
+
+    // MARK: - TCP connectivity
+
+    struct TCPConnectResult {
+        let success: Bool
+        let elapsedMs: Int
+        let errorMessage: String?
+    }
+
+    /// Same single-resume guard as `CertFetchResumer`, but tracks elapsed time and a plain
+    /// success/failure outcome instead of a certificate expiry date.
+    private final class TCPConnectResumer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var resumed = false
+        private let start = Date()
+        private let continuation: CheckedContinuation<TCPConnectResult, Never>
+
+        init(continuation: CheckedContinuation<TCPConnectResult, Never>) {
+            self.continuation = continuation
+        }
+
+        func resumeOnce(success: Bool, errorMessage: String?) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !resumed else { return }
+            resumed = true
+            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+            continuation.resume(returning: TCPConnectResult(success: success, elapsedMs: elapsedMs, errorMessage: errorMessage))
+        }
+    }
+
+    /// Opens a raw TCP connection to `host:port` (no TLS, no protocol handshake beyond the
+    /// three-way handshake) to check basic reachability. Used for `.tcp` endpoints and the
+    /// endpoint form's "Test Connection" flow.
+    nonisolated static func performTCPConnect(host: String, port: UInt16, timeout: TimeInterval) async -> TCPConnectResult {
+        await withCheckedContinuation { continuation in
+            let resumer = TCPConnectResumer(continuation: continuation)
+
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+                resumer.resumeOnce(success: false, errorMessage: "Invalid port")
+                return
+            }
+            let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+            let queue = DispatchQueue(label: "com.zext.healthmonitor.tcp-check")
+
+            queue.asyncAfter(deadline: .now() + timeout) {
+                resumer.resumeOnce(success: false, errorMessage: "Timed out")
+                connection.cancel()
+            }
+
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    resumer.resumeOnce(success: true, errorMessage: nil)
+                    connection.cancel()
+                case .failed(let error):
+                    resumer.resumeOnce(success: false, errorMessage: error.localizedDescription)
+                    connection.cancel()
+                case .cancelled:
+                    resumer.resumeOnce(success: false, errorMessage: "Cancelled")
+                default:
+                    break
+                }
+            }
+            connection.start(queue: queue)
+        }
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+import Network
 @testable import ProjeHealthMonitor
 
 final class MockURLProtocol: URLProtocol {
@@ -202,6 +203,56 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertEqual(decoded.name, "Round Trip")
     }
 
+    // MARK: - checkType / matchMode backward compatibility
+
+    func testDecodingEndpointWithoutCheckTypeDefaultsToHTTP() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(endpoint.checkType, .http)
+    }
+
+    func testEncodingRoundTripsCheckTypeTCP() throws {
+        var endpoint = makeEndpoint()
+        endpoint.checkType = .tcp
+        endpoint.url = URL(string: "tcp://db.example.test:5432")!
+        let data = try JSONEncoder().encode(endpoint)
+        let decoded = try JSONDecoder().decode(Endpoint.self, from: data)
+        XCTAssertEqual(decoded.checkType, .tcp)
+        XCTAssertEqual(decoded.url.host, "db.example.test")
+        XCTAssertEqual(decoded.url.port, 5432)
+    }
+
+    func testDecodingJSONAssertionWithoutMatchModeDefaultsToExact() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200,
+            "jsonAssertions": [
+                { "id": "22222222-2222-2222-2222-222222222222", "path": "data.status", "expectedValue": "healthy" }
+            ]
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(endpoint.jsonAssertions.first?.matchMode, .exact)
+    }
+
+    func testEncodingRoundTripsMatchMode() throws {
+        var endpoint = makeEndpoint(jsonAssertions: [JSONAssertion(path: "data.status", expectedValue: "health", matchMode: .contains)])
+        endpoint.name = "Round Trip Match Mode"
+        let data = try JSONEncoder().encode(endpoint)
+        let decoded = try JSONDecoder().decode(Endpoint.self, from: data)
+        XCTAssertEqual(decoded.jsonAssertions.first?.matchMode, .contains)
+    }
+
     func testDownOnNetworkTimeout() async {
         MockURLProtocol.requestHandler = { _ in
             throw URLError(.timedOut)
@@ -273,6 +324,20 @@ final class HealthCheckServiceTests: XCTestCase {
     func testEvaluateIsTrimmedAndCaseInsensitive() {
         XCTAssertTrue(HealthCheckService.evaluate(actualValue: " Healthy ", expectedValue: "healthy"))
         XCTAssertFalse(HealthCheckService.evaluate(actualValue: "degraded", expectedValue: "healthy"))
+    }
+
+    func testEvaluateContainsModeMatchesSubstringCaseInsensitively() {
+        XCTAssertTrue(HealthCheckService.evaluate(actualValue: "all systems Healthy", expectedValue: "healthy", mode: .contains))
+        XCTAssertFalse(HealthCheckService.evaluate(actualValue: "degraded", expectedValue: "healthy", mode: .contains))
+    }
+
+    func testEvaluateRegexModeMatchesPattern() {
+        XCTAssertTrue(HealthCheckService.evaluate(actualValue: "v1.2.3", expectedValue: #"^v\d+\.\d+\.\d+$"#, mode: .regex))
+        XCTAssertFalse(HealthCheckService.evaluate(actualValue: "not-a-version", expectedValue: #"^v\d+\.\d+\.\d+$"#, mode: .regex))
+    }
+
+    func testEvaluateRegexModeWithInvalidPatternReturnsFalseInsteadOfThrowing() {
+        XCTAssertFalse(HealthCheckService.evaluate(actualValue: "anything", expectedValue: "([unclosed", mode: .regex))
     }
 
     // MARK: - Uptime percentage
@@ -385,6 +450,95 @@ final class HealthCheckServiceTests: XCTestCase {
         let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, secret: "tok-1", session: session)
         XCTAssertTrue(result.isHealthy)
         XCTAssertEqual(receivedHeaders?["Authorization"], "Bearer tok-1")
+    }
+
+    // MARK: - TCP checks
+
+    /// Single-resume guard for `waitUntilReady`, mirroring the pattern `HealthCheckService`'s own
+    /// `NWConnection`/`NWListener` continuations use.
+    private final class ListenerResumer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var resumed = false
+        private let continuation: CheckedContinuation<UInt16, Never>
+
+        init(continuation: CheckedContinuation<UInt16, Never>) {
+            self.continuation = continuation
+        }
+
+        func resumeOnce(_ port: UInt16) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !resumed else { return }
+            resumed = true
+            continuation.resume(returning: port)
+        }
+    }
+
+    /// Starts a local TCP listener on an OS-assigned ephemeral port and returns it once ready, so
+    /// TCP-check tests don't depend on any real external host being reachable from CI.
+    private func startEphemeralListener() async -> (listener: NWListener, port: UInt16) {
+        let listener = try! NWListener(using: .tcp)
+        let port: UInt16 = await withCheckedContinuation { continuation in
+            let resumer = ListenerResumer(continuation: continuation)
+            listener.stateUpdateHandler = { state in
+                if case .ready = state, let port = listener.port {
+                    resumer.resumeOnce(port.rawValue)
+                }
+            }
+            listener.newConnectionHandler = { connection in connection.cancel() }
+            listener.start(queue: .main)
+        }
+        return (listener, port)
+    }
+
+    func testExecuteCheckTCPHealthyOnSuccessfulConnect() async {
+        let (listener, port) = await startEphemeralListener()
+        defer { listener.cancel() }
+
+        let endpoint = Endpoint(name: "TCP Test", url: URL(string: "tcp://127.0.0.1:\(port)")!, checkType: .tcp)
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5)
+
+        XCTAssertTrue(result.isHealthy)
+        XCTAssertNil(result.statusCode)
+        XCTAssertNotNil(result.responseTimeMs)
+        XCTAssertNil(result.failureReason)
+    }
+
+    func testExecuteCheckTCPDownWhenConnectionRefused() async throws {
+        let (listener, port) = await startEphemeralListener()
+        listener.cancel()
+        try await Task.sleep(nanoseconds: 200_000_000) // let the OS actually release the port
+
+        // Short timeout: NWConnection retries a refused loopback connection internally for
+        // several seconds before surfacing `.failed`, so this exercises our own timeout path
+        // rather than waiting that out — still a legitimate down/failureReason outcome either way.
+        let endpoint = Endpoint(name: "TCP Test", url: URL(string: "tcp://127.0.0.1:\(port)")!, checkType: .tcp)
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 1)
+
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertNil(result.statusCode)
+        XCTAssertNotNil(result.failureReason)
+    }
+
+    func testExecuteCheckTCPIgnoresJSONAssertionsAndAuth() async {
+        let (listener, port) = await startEphemeralListener()
+        defer { listener.cancel() }
+
+        // Configured so an HTTP-style evaluation would fail — TCP checks must ignore both entirely.
+        let endpoint = Endpoint(name: "TCP Test", url: URL(string: "tcp://127.0.0.1:\(port)")!, checkType: .tcp,
+                                 jsonAssertions: [JSONAssertion(path: "nonexistent", expectedValue: "wontmatch")],
+                                 authType: .bearerToken)
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5, secret: "irrelevant")
+
+        XCTAssertTrue(result.isHealthy)
+    }
+
+    func testExecuteCheckTCPFailsWithoutPort() async {
+        let endpoint = Endpoint(name: "TCP Test", url: URL(string: "tcp://127.0.0.1")!, checkType: .tcp)
+        let result = await HealthCheckService.executeCheck(endpoint: endpoint, timeout: 5)
+
+        XCTAssertFalse(result.isHealthy)
+        XCTAssertNotNil(result.failureReason)
     }
 }
 

@@ -19,6 +19,7 @@ struct EndpointFormView: View {
 
     @State private var name: String
     @State private var urlString: String
+    @State private var checkType: CheckType
     @State private var expectedStatusCode: String
     @State private var useCustomInterval: Bool
     @State private var customInterval: String
@@ -39,12 +40,15 @@ struct EndpointFormView: View {
     @State private var testIsJSON = false
     @State private var testErrorMessage: String?
     @State private var testCertificateExpiresAt: Date?
+    /// Set only for `.tcp` test runs — `nil` while `.http` or before any test has run.
+    @State private var testTCPConnected: Bool?
 
     init(endpoint: Endpoint?, onComplete: @escaping (FormResult) -> Void) {
         self.originalEndpoint = endpoint
         self.onComplete = onComplete
         _name = State(initialValue: endpoint?.name ?? "")
         _urlString = State(initialValue: endpoint?.url.absoluteString ?? "")
+        _checkType = State(initialValue: endpoint?.checkType ?? .http)
         _expectedStatusCode = State(initialValue: String(endpoint?.expectedStatusCode ?? 200))
         _useCustomInterval = State(initialValue: endpoint?.checkIntervalOverride != nil)
         _customInterval = State(initialValue: endpoint?.checkIntervalOverride.map { String(Int($0)) } ?? "")
@@ -64,8 +68,16 @@ struct EndpointFormView: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
-                    TextField("URL", text: $urlString, prompt: Text("https://api.example.com/health"))
-                    TextField("Expected HTTP status code", text: $expectedStatusCode)
+                    Picker("Check Type", selection: $checkType) {
+                        ForEach(CheckType.allCases) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                    TextField(checkType == .tcp ? "Host:Port" : "URL", text: $urlString,
+                              prompt: Text(checkType == .tcp ? "tcp://db.example.com:5432" : "https://api.example.com/health"))
+                    if checkType == .http {
+                        TextField("Expected HTTP status code", text: $expectedStatusCode)
+                    }
                 } header: {
                     Label("Details", systemImage: "info.circle")
                 }
@@ -79,10 +91,12 @@ struct EndpointFormView: View {
                     Label("Check Interval", systemImage: "clock")
                 }
 
-                Section {
-                    authSectionContent
-                } header: {
-                    Label("Authentication", systemImage: "key")
+                if checkType == .http {
+                    Section {
+                        authSectionContent
+                    } header: {
+                        Label("Authentication", systemImage: "key")
+                    }
                 }
 
                 Section {
@@ -91,36 +105,46 @@ struct EndpointFormView: View {
                     Label("Test Connection", systemImage: "bolt.horizontal.circle")
                 }
 
-                Section {
-                    ForEach($assertions) { $assertion in
-                        HStack {
-                            TextField("JSON field", text: $assertion.path, prompt: Text("data.status"))
-                            TextField("Expected value", text: $assertion.expectedValue, prompt: Text("healthy"))
-                            Button {
-                                assertions.removeAll { $0.id == assertion.id }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.secondary)
+                if checkType == .http {
+                    Section {
+                        ForEach($assertions) { $assertion in
+                            HStack {
+                                TextField("JSON field", text: $assertion.path, prompt: Text("data.status"))
+                                TextField("Expected value", text: $assertion.expectedValue, prompt: Text("healthy"))
+                                Picker("", selection: $assertion.matchMode) {
+                                    ForEach(MatchMode.allCases) { mode in
+                                        Text(mode.displayName).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 100)
+                                .labelsHidden()
+                                Button {
+                                    assertions.removeAll { $0.id == assertion.id }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove assertion")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Remove assertion")
                         }
+                        Button {
+                            assertions.append(JSONAssertion(path: "", expectedValue: ""))
+                        } label: {
+                            Label("Add Assertion", systemImage: "plus")
+                        }
+                        Text("All assertions below must match (AND) for the endpoint to be considered healthy. Leave the list empty to check only the HTTP status code. A dot-separated field path is looked up in the JSON body, e.g. data.status. Match mode controls how the expected value is compared: Exact (trimmed, case-insensitive equality), Contains (substring), or Regex (pattern match; an invalid pattern never matches).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let evaluation = livePreview {
+                            Label(evaluation.0, systemImage: evaluation.1)
+                                .font(.caption.bold())
+                                .foregroundStyle(evaluation.2)
+                        }
+                    } header: {
+                        Label("JSON Field Match (optional)", systemImage: "curlybraces")
                     }
-                    Button {
-                        assertions.append(JSONAssertion(path: "", expectedValue: ""))
-                    } label: {
-                        Label("Add Assertion", systemImage: "plus")
-                    }
-                    Text("All assertions below must match (AND) for the endpoint to be considered healthy. Leave the list empty to check only the HTTP status code. A dot-separated field path is looked up in the JSON body, e.g. data.status.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let evaluation = livePreview {
-                        Label(evaluation.0, systemImage: evaluation.1)
-                            .font(.caption.bold())
-                            .foregroundStyle(evaluation.2)
-                    }
-                } header: {
-                    Label("JSON Field Match (optional)", systemImage: "curlybraces")
                 }
             }
             .formStyle(.grouped)
@@ -219,7 +243,13 @@ struct EndpointFormView: View {
             .disabled(!isURLValid || isTesting)
             .accessibilityLabel(isTesting ? "Testing connection" : "Test connection")
 
-            if let testStatusCode, let testElapsedMs {
+            if checkType == .tcp {
+                if let testTCPConnected, let testElapsedMs {
+                    Text(testTCPConnected ? "Connected · \(testElapsedMs) ms" : "Failed · \(testElapsedMs) ms")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let testStatusCode, let testElapsedMs {
                 Text("Status \(testStatusCode) · \(testElapsedMs) ms")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -227,62 +257,75 @@ struct EndpointFormView: View {
             Spacer()
         }
 
-        if let testCertificateExpiresAt {
-            Label(certificateStatusText(for: testCertificateExpiresAt), systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(certificateStatusColor(for: testCertificateExpiresAt))
-        }
+        if checkType == .tcp {
+            if let testErrorMessage {
+                Text(testErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } else {
+            if let testCertificateExpiresAt {
+                Label(certificateStatusText(for: testCertificateExpiresAt), systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(certificateStatusColor(for: testCertificateExpiresAt))
+            }
 
-        if let testErrorMessage {
-            Text(testErrorMessage)
-                .font(.caption)
-                .foregroundStyle(.red)
-        } else if testStatusCode != nil, !testIsJSON {
-            Text("Response is not JSON — only HTTP status code matching is available for this endpoint.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else if !testFlattenedFields.isEmpty {
-            Text("Tap a field to use it as the JSON match:")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(testFlattenedFields) { field in
-                        Button {
-                            if let index = assertions.firstIndex(where: { $0.path == field.path }) {
-                                assertions[index].expectedValue = field.value
-                            } else {
-                                assertions.append(JSONAssertion(path: field.path, expectedValue: field.value))
+            if let testErrorMessage {
+                Text(testErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if testStatusCode != nil, !testIsJSON {
+                Text("Response is not JSON — only HTTP status code matching is available for this endpoint.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !testFlattenedFields.isEmpty {
+                Text("Tap a field to use it as the JSON match:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(testFlattenedFields) { field in
+                            Button {
+                                if let index = assertions.firstIndex(where: { $0.path == field.path }) {
+                                    assertions[index].expectedValue = field.value
+                                } else {
+                                    assertions.append(JSONAssertion(path: field.path, expectedValue: field.value))
+                                }
+                            } label: {
+                                HStack {
+                                    Text(field.path)
+                                        .font(.system(.caption, design: .monospaced))
+                                    Spacer()
+                                    Text(field.value)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                             }
-                        } label: {
-                            HStack {
-                                Text(field.path)
-                                    .font(.system(.caption, design: .monospaced))
-                                Spacer()
-                                Text(field.value)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+                            .buttonStyle(.plain)
+                            .disabled(!field.isSelectable)
+                            .opacity(field.isSelectable ? 1 : 0.4)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(field.isSelectable
+                                ? "\(field.path), value \(field.value)"
+                                : "\(field.path), \(field.value), not selectable")
+                            .accessibilityAddTraits(field.isSelectable ? [.isButton] : [])
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!field.isSelectable)
-                        .opacity(field.isSelectable ? 1 : 0.4)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(field.isSelectable
-                            ? "\(field.path), value \(field.value)"
-                            : "\(field.path), \(field.value), not selectable")
-                        .accessibilityAddTraits(field.isSelectable ? [.isButton] : [])
                     }
                 }
+                .frame(maxHeight: 180)
             }
-            .frame(maxHeight: 180)
         }
     }
 
     private var isURLValid: Bool {
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        return url.scheme != nil
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme != nil else {
+            return false
+        }
+        if checkType == .tcp {
+            return url.host != nil && url.port != nil
+        }
+        return true
     }
 
     /// Returns (label, symbol, color) describing whether the current assertions would evaluate as
@@ -301,6 +344,12 @@ struct EndpointFormView: View {
             testErrorMessage = "Enter a valid URL first"
             return
         }
+
+        if checkType == .tcp {
+            await runTCPTest(url: url)
+            return
+        }
+
         isTesting = true
         testErrorMessage = nil
         testCertificateExpiresAt = nil
@@ -336,6 +385,22 @@ struct EndpointFormView: View {
         }
     }
 
+    private func runTCPTest(url: URL) async {
+        guard let host = url.host, let port = url.port, let nwPort = UInt16(exactly: port) else {
+            testErrorMessage = "Enter a valid host:port, e.g. tcp://db.example.com:5432"
+            return
+        }
+        isTesting = true
+        testErrorMessage = nil
+        testTCPConnected = nil
+        defer { isTesting = false }
+
+        let result = await HealthCheckService.performTCPConnect(host: host, port: nwPort, timeout: Self.testTimeout)
+        testTCPConnected = result.success
+        testElapsedMs = result.elapsedMs
+        testErrorMessage = result.success ? nil : (result.errorMessage ?? "Connection failed")
+    }
+
     private func certificateStatusText(for expiry: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -358,11 +423,11 @@ struct EndpointFormView: View {
         }
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
               url.scheme != nil else {
-            errorMessage = "Enter a valid URL"
+            errorMessage = checkType == .tcp ? "Enter a valid host:port, e.g. tcp://db.example.com:5432" : "Enter a valid URL"
             return
         }
-        guard let statusCode = Int(expectedStatusCode) else {
-            errorMessage = "Status code must be a number"
+        if checkType == .tcp, url.host == nil || url.port == nil {
+            errorMessage = "Enter a valid host:port, e.g. tcp://db.example.com:5432"
             return
         }
         var interval: TimeInterval?
@@ -372,6 +437,29 @@ struct EndpointFormView: View {
                 return
             }
             interval = seconds
+        }
+
+        var endpoint = originalEndpoint ?? Endpoint(name: trimmedName, url: url)
+        endpoint.name = trimmedName
+        endpoint.url = url
+        endpoint.checkType = checkType
+        endpoint.checkIntervalOverride = interval
+
+        // TCP checks don't use status code / JSON assertions / auth — those are HTTP-only, so
+        // saving as .tcp clears them rather than leaving stale HTTP config silently persisted.
+        if checkType == .tcp {
+            endpoint.jsonAssertions = []
+            endpoint.authType = .none
+            endpoint.authUsername = nil
+            endpoint.authHeaderName = nil
+            let secretUpdate: SecretUpdate = hasExistingSecret ? .cleared : .unchanged
+            onComplete(.save(endpoint, secret: secretUpdate))
+            return
+        }
+
+        guard let statusCode = Int(expectedStatusCode) else {
+            errorMessage = "Status code must be a number"
+            return
         }
         if authType == .customHeader, authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             errorMessage = "Enter a header name for custom header auth"
@@ -400,14 +488,10 @@ struct EndpointFormView: View {
                 errorMessage = "Each JSON assertion needs both a field path and an expected value"
                 return
             }
-            cleanedAssertions.append(JSONAssertion(id: assertion.id, path: path, expectedValue: value))
+            cleanedAssertions.append(JSONAssertion(id: assertion.id, path: path, expectedValue: value, matchMode: assertion.matchMode))
         }
 
-        var endpoint = originalEndpoint ?? Endpoint(name: trimmedName, url: url)
-        endpoint.name = trimmedName
-        endpoint.url = url
         endpoint.expectedStatusCode = statusCode
-        endpoint.checkIntervalOverride = interval
         endpoint.jsonAssertions = cleanedAssertions
         endpoint.authType = authType
         endpoint.authUsername = authType == .basicAuth ? authUsername.trimmingCharacters(in: .whitespacesAndNewlines) : nil
