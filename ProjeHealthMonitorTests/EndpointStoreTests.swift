@@ -143,4 +143,17 @@ final class EndpointStoreTests: XCTestCase {
         let garbage = Data("not json".utf8)
         XCTAssertThrowsError(try store.importEndpoints(from: garbage))
     }
+
+    @MainActor func testCorruptStoredDataIsNotOverwrittenOnLaunch() throws {
+        let corrupt = Data("not json".utf8)
+        defaults.set(corrupt, forKey: "endpoints")
+
+        let store = EndpointStore(defaults: defaults)
+        XCTAssertEqual(store.endpoints, [], "in-memory list falls back to empty when decode fails")
+
+        // The raw bytes on disk must be untouched by the failed decode, so they remain
+        // available for recovery/inspection instead of being silently replaced with `[]`.
+        let onDisk = try XCTUnwrap(defaults.data(forKey: "endpoints"))
+        XCTAssertEqual(onDisk, corrupt)
+    }
 }

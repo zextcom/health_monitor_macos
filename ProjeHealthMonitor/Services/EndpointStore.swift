@@ -37,6 +37,10 @@ final class EndpointStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    /// Guards `persistEndpoints()` from running as a side effect of the `didSet` firing during
+    /// `init`'s own assignment — without this, a decode failure on existing data would
+    /// immediately overwrite it on disk with an empty array before we ever hand control back.
+    private var isLoading = true
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -59,6 +63,8 @@ final class EndpointStore: ObservableObject {
         self.requestTimeout = storedTimeout > 0 ? storedTimeout : 10
 
         self.hasCompletedOnboarding = defaults.object(forKey: Keys.hasCompletedOnboarding) as? Bool ?? false
+
+        isLoading = false
     }
 
     func addEndpoint(_ endpoint: Endpoint) {
@@ -96,6 +102,7 @@ final class EndpointStore: ObservableObject {
     }
 
     private func persistEndpoints() {
+        guard !isLoading else { return }
         guard let data = try? JSONEncoder().encode(endpoints) else { return }
         defaults.set(data, forKey: Keys.endpoints)
     }
