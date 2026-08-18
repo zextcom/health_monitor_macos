@@ -17,6 +17,8 @@ struct EndpointFormView: View {
     let originalEndpoint: Endpoint?
     let onComplete: (FormResult) -> Void
 
+    @EnvironmentObject var endpointStore: EndpointStore
+
     @State private var name: String
     @State private var urlString: String
     @State private var checkType: CheckType
@@ -29,6 +31,7 @@ struct EndpointFormView: View {
     @State private var authType: AuthType
     @State private var authUsername: String
     @State private var authHeaderName: String
+    @State private var group: String
     /// Never prefilled from the Keychain — left blank on edit means "keep the existing secret".
     @State private var authSecret: String = ""
 
@@ -56,6 +59,7 @@ struct EndpointFormView: View {
         _authType = State(initialValue: endpoint?.authType ?? .none)
         _authUsername = State(initialValue: endpoint?.authUsername ?? "")
         _authHeaderName = State(initialValue: endpoint?.authHeaderName ?? "")
+        _group = State(initialValue: endpoint?.group ?? "")
     }
 
     var body: some View {
@@ -68,6 +72,7 @@ struct EndpointFormView: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
+                    groupField
                     Picker("Check Type", selection: $checkType) {
                         ForEach(CheckType.allCases) { type in
                             Text(type.displayName).tag(type)
@@ -167,6 +172,34 @@ struct EndpointFormView: View {
             .padding()
         }
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 480, idealHeight: 680, maxHeight: 820)
+    }
+
+    // MARK: - Group
+
+    @ViewBuilder
+    private var groupField: some View {
+        TextField("Group (optional)", text: $group, prompt: Text("e.g. Production"))
+        if !groupSuggestions.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(groupSuggestions, id: \.self) { suggestion in
+                        Button { group = suggestion } label: { GroupBadge(name: suggestion) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Existing group names filtered against what's typed; hidden once the field already exactly
+    /// matches an existing group.
+    private var groupSuggestions: [String] {
+        let trimmed = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        let all = endpointStore.allGroups
+        guard !all.isEmpty else { return [] }
+        if trimmed.isEmpty { return all }
+        if all.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { return [] }
+        return all.filter { $0.localizedCaseInsensitiveContains(trimmed) }
     }
 
     // MARK: - Authentication section
@@ -444,6 +477,8 @@ struct EndpointFormView: View {
         endpoint.url = url
         endpoint.checkType = checkType
         endpoint.checkIntervalOverride = interval
+        let trimmedGroup = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        endpoint.group = trimmedGroup.isEmpty ? nil : trimmedGroup
 
         // TCP checks don't use status code / JSON assertions / auth — those are HTTP-only, so
         // saving as .tcp clears them rather than leaving stale HTTP config silently persisted.

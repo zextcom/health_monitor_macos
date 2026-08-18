@@ -156,4 +156,69 @@ final class EndpointStoreTests: XCTestCase {
         let onDisk = try XCTUnwrap(defaults.data(forKey: "endpoints"))
         XCTAssertEqual(onDisk, corrupt)
     }
+
+    // MARK: - allGroups
+
+    @MainActor func testAllGroupsIsEmptyWhenNoEndpointsHaveGroups() {
+        let store = EndpointStore(defaults: defaults)
+        store.addEndpoint(makeEndpoint(name: "A"))
+        store.addEndpoint(makeEndpoint(name: "B"))
+        XCTAssertEqual(store.allGroups, [])
+    }
+
+    @MainActor func testAllGroupsReturnsDistinctSortedNames() {
+        let store = EndpointStore(defaults: defaults)
+        var a = makeEndpoint(name: "A"); a.group = "Zebra"
+        var b = makeEndpoint(name: "B"); b.group = "apple"
+        var c = makeEndpoint(name: "C"); c.group = "Mango"
+        var d = makeEndpoint(name: "D"); d.group = "apple"
+        [a, b, c, d].forEach { store.addEndpoint($0) }
+        XCTAssertEqual(store.allGroups, ["apple", "Mango", "Zebra"])
+    }
+
+    @MainActor func testAllGroupsExcludesBlankAndWhitespaceOnlyGroups() {
+        let store = EndpointStore(defaults: defaults)
+        var a = makeEndpoint(name: "A"); a.group = ""
+        var b = makeEndpoint(name: "B"); b.group = "   "
+        var c = makeEndpoint(name: "C"); c.group = nil
+        [a, b, c].forEach { store.addEndpoint($0) }
+        XCTAssertEqual(store.allGroups, [])
+    }
+
+    @MainActor func testAllGroupsTrimsWhitespace() {
+        let store = EndpointStore(defaults: defaults)
+        var a = makeEndpoint(name: "A"); a.group = "  Production  "
+        store.addEndpoint(a)
+        XCTAssertEqual(store.allGroups, ["Production"])
+    }
+
+    // MARK: - groupedByGroupName
+
+    func testGroupedByGroupNameOnEmptyArrayReturnsEmptyArray() {
+        let endpoints: [Endpoint] = []
+        XCTAssertEqual(endpoints.groupedByGroupName().count, 0)
+    }
+
+    func testGroupedByGroupNameWithNoGroupsReturnsSingleUngroupedSection() {
+        let endpoints = [makeEndpoint(name: "A"), makeEndpoint(name: "B")]
+        let sections = endpoints.groupedByGroupName()
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections.first?.title, EndpointGroupSection.ungroupedTitle)
+        XCTAssertEqual(sections.first?.endpoints.count, 2)
+    }
+
+    func testGroupedByGroupNameSortsGroupsCaseInsensitivelyWithUngroupedLast() {
+        var staging = makeEndpoint(name: "S"); staging.group = "staging"
+        var production = makeEndpoint(name: "P"); production.group = "Production"
+        let ungrouped = makeEndpoint(name: "U")
+        let sections = [staging, production, ungrouped].groupedByGroupName()
+        XCTAssertEqual(sections.map(\.title), ["Production", "staging", EndpointGroupSection.ungroupedTitle])
+    }
+
+    func testGroupedByGroupNameOmitsUngroupedSectionWhenAllEndpointsHaveGroups() {
+        var a = makeEndpoint(name: "A"); a.group = "Production"
+        let sections = [a].groupedByGroupName()
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections.first?.title, "Production")
+    }
 }

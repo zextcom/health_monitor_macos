@@ -113,9 +113,17 @@ struct Endpoint: Codable, Identifiable, Equatable {
     /// Header name for `.customHeader`, e.g. "X-API-Key" — not treated as secret.
     var authHeaderName: String?
 
+    /// Optional single group/tag for lightweight organization (e.g. "Production", "Staging").
+    /// Free text — no dedicated `EndpointGroup` entity, no rename/delete/color-assignment UI.
+    /// Autocomplete suggestions are derived at read-time from `EndpointStore.allGroups`, not
+    /// stored separately. Badge color is derived deterministically from this string
+    /// (`GroupBadgeStyle`), also never persisted.
+    var group: String?
+
     init(id: UUID = UUID(), name: String, url: URL, checkType: CheckType = .http, expectedStatusCode: Int = 200,
          checkIntervalOverride: TimeInterval? = nil, jsonAssertions: [JSONAssertion] = [],
-         authType: AuthType = .none, authUsername: String? = nil, authHeaderName: String? = nil) {
+         authType: AuthType = .none, authUsername: String? = nil, authHeaderName: String? = nil,
+         group: String? = nil) {
         self.id = id
         self.name = name
         self.url = url
@@ -126,6 +134,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         self.authType = authType
         self.authUsername = authUsername
         self.authHeaderName = authHeaderName
+        self.group = group
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -133,6 +142,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         case jsonAssertions
         case jsonFieldPath, expectedFieldValue // legacy single-assertion schema, decode-only
         case authType, authUsername, authHeaderName
+        case group
     }
 
     init(from decoder: Decoder) throws {
@@ -146,6 +156,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         authType = try container.decodeIfPresent(AuthType.self, forKey: .authType) ?? .none
         authUsername = try container.decodeIfPresent(String.self, forKey: .authUsername)
         authHeaderName = try container.decodeIfPresent(String.self, forKey: .authHeaderName)
+        group = try container.decodeIfPresent(String.self, forKey: .group)
 
         if let assertions = try container.decodeIfPresent([JSONAssertion].self, forKey: .jsonAssertions) {
             jsonAssertions = assertions
@@ -169,5 +180,41 @@ struct Endpoint: Codable, Identifiable, Equatable {
         try container.encode(authType, forKey: .authType)
         try container.encodeIfPresent(authUsername, forKey: .authUsername)
         try container.encodeIfPresent(authHeaderName, forKey: .authHeaderName)
+        try container.encodeIfPresent(group, forKey: .group)
+    }
+}
+
+/// A titled slice of endpoints sharing a `group` value, used by both the popover and Settings to
+/// render section headers. Endpoints with no group (or a blank one) collect into a section titled
+/// `ungroupedTitle`, always last.
+struct EndpointGroupSection: Identifiable {
+    static let ungroupedTitle = "Ungrouped"
+
+    let title: String
+    let endpoints: [Endpoint]
+    var id: String { title }
+}
+
+extension Array where Element == Endpoint {
+    /// Groups by `group` name, case-insensitively sorted, with "Ungrouped" last (omitted entirely
+    /// if every endpoint has a group).
+    func groupedByGroupName() -> [EndpointGroupSection] {
+        var byGroup: [String: [Endpoint]] = [:]
+        var ungrouped: [Endpoint] = []
+        for endpoint in self {
+            let trimmed = endpoint.group?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if trimmed.isEmpty {
+                ungrouped.append(endpoint)
+            } else {
+                byGroup[trimmed, default: []].append(endpoint)
+            }
+        }
+        var sections = byGroup.keys
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .map { EndpointGroupSection(title: $0, endpoints: byGroup[$0] ?? []) }
+        if !ungrouped.isEmpty {
+            sections.append(EndpointGroupSection(title: EndpointGroupSection.ungroupedTitle, endpoints: ungrouped))
+        }
+        return sections
     }
 }

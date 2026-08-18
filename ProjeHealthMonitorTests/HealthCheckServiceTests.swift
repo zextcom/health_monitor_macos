@@ -253,6 +253,29 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertEqual(decoded.jsonAssertions.first?.matchMode, .contains)
     }
 
+    // MARK: - group backward compatibility
+
+    func testDecodingEndpointWithoutGroupDefaultsToNil() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertNil(endpoint.group)
+    }
+
+    func testEncodingRoundTripsGroup() throws {
+        var endpoint = makeEndpoint()
+        endpoint.group = "Production"
+        let data = try JSONEncoder().encode(endpoint)
+        let decoded = try JSONDecoder().decode(Endpoint.self, from: data)
+        XCTAssertEqual(decoded.group, "Production")
+    }
+
     func testDownOnNetworkTimeout() async {
         MockURLProtocol.requestHandler = { _ in
             throw URLError(.timedOut)

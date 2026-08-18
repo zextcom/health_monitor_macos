@@ -80,6 +80,17 @@ final class EndpointStore: ObservableObject {
         endpoints.removeAll { $0.id == id }
     }
 
+    /// Distinct group names currently in use, trimmed, blanks excluded, sorted case-insensitively.
+    /// Recomputed from `endpoints` on every access — no separate persisted groups list, since
+    /// groups are free text with no management screen. A typo'd group name can only be fixed by
+    /// editing each affected endpoint individually — deferred intentionally, see ROADMAP.local.md.
+    var allGroups: [String] {
+        let names = endpoints
+            .compactMap { $0.group?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return Array(Set(names)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     /// Endpoint configuration only — no auth secrets (those live in `SecretStore`/Keychain and
     /// are deliberately excluded from exports so a backup file is safe to share/store).
     func exportData() -> Data? {

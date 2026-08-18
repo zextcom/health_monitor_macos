@@ -64,27 +64,40 @@ struct SettingsView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(endpointStore.endpoints) { endpoint in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(endpoint.name).font(.headline)
-                                Text(endpoint.url.absoluteString)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    ForEach(groupedEndpointSections) { section in
+                        Section {
+                            ForEach(section.endpoints) { endpoint in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(endpoint.name).font(.headline)
+                                        Text(endpoint.url.absoluteString)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("Edit") {
+                                        editingEndpoint = endpoint
+                                        isPresentingForm = true
+                                    }
+                                }
                             }
-                            Spacer()
-                            Button("Edit") {
-                                editingEndpoint = endpoint
-                                isPresentingForm = true
+                            .onDelete { offsets in
+                                for index in offsets {
+                                    let endpoint = section.endpoints[index]
+                                    endpointStore.removeEndpoint(id: endpoint.id)
+                                    SecretStore.deleteSecret(for: endpoint.id.uuidString)
+                                    dailyStatsStore.removeStats(for: endpoint.id)
+                                }
                             }
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            let id = endpointStore.endpoints[index].id
-                            endpointStore.removeEndpoint(id: id)
-                            SecretStore.deleteSecret(for: id.uuidString)
-                            dailyStatsStore.removeStats(for: id)
+                        } header: {
+                            if groupedEndpointSections.count > 1 {
+                                HStack(spacing: 6) {
+                                    if section.title != EndpointGroupSection.ungroupedTitle {
+                                        Circle().fill(GroupBadgeStyle.color(for: section.title)).frame(width: 6, height: 6)
+                                    }
+                                    Text(section.title)
+                                }
+                            }
                         }
                     }
                 }
@@ -124,6 +137,10 @@ struct SettingsView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 8)
         }
+    }
+
+    private var groupedEndpointSections: [EndpointGroupSection] {
+        endpointStore.endpoints.groupedByGroupName()
     }
 
     private func exportEndpoints() {
