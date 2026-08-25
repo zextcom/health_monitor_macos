@@ -1,6 +1,6 @@
 import Foundation
 
-struct HealthCheckResult: Codable, Identifiable, Equatable {
+struct HealthCheckResult: Codable, Identifiable, Equatable, Sendable {
     var id: UUID = UUID()
     let endpointId: UUID
     let timestamp: Date

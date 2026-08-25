@@ -1,6 +1,6 @@
 import Foundation
 
-enum AuthType: String, Codable, CaseIterable, Identifiable {
+enum AuthType: String, Codable, CaseIterable, Identifiable, Sendable {
     case none
     case bearerToken
     case basicAuth
@@ -18,7 +18,7 @@ enum AuthType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum CheckType: String, Codable, CaseIterable, Identifiable {
+enum CheckType: String, Codable, CaseIterable, Identifiable, Sendable {
     case http
     case tcp
 
@@ -32,7 +32,7 @@ enum CheckType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum MatchMode: String, Codable, CaseIterable, Identifiable {
+enum MatchMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case exact
     case contains
     case regex
@@ -50,7 +50,7 @@ enum MatchMode: String, Codable, CaseIterable, Identifiable {
 
 /// A single dot-path/expected-value check against the JSON response body. `Endpoint.jsonAssertions`
 /// holds a list of these, ANDed together — every assertion must pass for the endpoint to be healthy.
-struct JSONAssertion: Codable, Identifiable, Equatable {
+struct JSONAssertion: Codable, Identifiable, Equatable, Sendable {
     var id: UUID = UUID()
     /// Dot-path into the JSON response body, e.g. "data.status". Dictionary keys only, no array indices.
     var path: String
@@ -89,7 +89,7 @@ struct JSONAssertion: Codable, Identifiable, Equatable {
     }
 }
 
-struct Endpoint: Codable, Identifiable, Equatable {
+struct Endpoint: Codable, Identifiable, Equatable, Sendable {
     var id: UUID = UUID()
     var name: String
     var url: URL

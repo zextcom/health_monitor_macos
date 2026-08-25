@@ -4,7 +4,7 @@ import Foundation
 /// (counts + a duration) rather than storing raw per-check history, so `DailyStatsStore` can retain
 /// weeks of data without unbounded growth — unlike `HealthHistoryStore`'s fixed-size ring buffer of
 /// raw results, which only covers the last ~100 checks.
-struct DailyStat: Codable, Equatable {
+struct DailyStat: Codable, Equatable, Sendable {
     var totalChecks: Int = 0
     var downChecks: Int = 0
     /// Approximated as `downChecks × effective check interval` at record time, not a measured

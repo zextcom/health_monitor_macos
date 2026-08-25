@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Persists a per-endpoint, per-day rollup of health checks — `totalChecks`/`downChecks`/
 /// `downtimeSeconds` per calendar day — so the Stats tab can show a 30-day uptime history without
@@ -9,6 +10,7 @@ import Foundation
 @MainActor
 final class DailyStatsStore: ObservableObject {
     static let retentionDays = 30
+    private static let logger = Logger(subsystem: "com.zext.healthmonitor", category: "DailyStatsStore")
     /// Days kept beyond `retentionDays` before pruning, so a day that just scrolled out of the
     /// display window isn't deleted the moment it stops being shown.
     private static let pruneBufferDays = 5
@@ -24,7 +26,11 @@ final class DailyStatsStore: ObservableObject {
         } else {
             let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("ProjeHealthMonitor", isDirectory: true)
-            try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+            } catch {
+                Self.logger.error("Failed to create Application Support directory: \(error.localizedDescription, privacy: .public)")
+            }
             self.fileURL = supportDir.appendingPathComponent("daily_stats.json")
         }
         load()
@@ -87,8 +93,25 @@ final class DailyStatsStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        guard let decoded = try? JSONDecoder().decode([String: [String: DailyStat]].self, from: data) else { return }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            if let cocoaError = error as? CocoaError, cocoaError.code == .fileReadNoSuchFile {
+                return
+            }
+            Self.logger.error("Failed to read daily stats file: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        let decoded: [String: [String: DailyStat]]
+        do {
+            decoded = try JSONDecoder().decode([String: [String: DailyStat]].self, from: data)
+        } catch {
+            Self.logger.error("Failed to decode daily stats file: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
         var result: [UUID: [String: DailyStat]] = [:]
         for (key, value) in decoded {
             if let uuid = UUID(uuidString: key) {
@@ -103,7 +126,11 @@ final class DailyStatsStore: ObservableObject {
         for (key, value) in stats {
             encodable[key.uuidString] = value
         }
-        guard let data = try? JSONEncoder().encode(encodable) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(encodable)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            Self.logger.error("Failed to save daily stats file: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

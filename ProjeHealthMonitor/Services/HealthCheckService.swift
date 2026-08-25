@@ -18,6 +18,7 @@ final class HealthCheckService: ObservableObject {
     private let historyStore: HealthHistoryStore
     private let dailyStatsStore: DailyStatsStore
     private let notificationService: NotificationService
+    private let maxConcurrentChecks: Int
     private var loopTask: Task<Void, Never>?
     private var lastCheckedAt: [UUID: Date] = [:]
 
@@ -29,12 +30,15 @@ final class HealthCheckService: ObservableObject {
     private var certExpiryCache: [UUID: Date?] = [:]
     private var certWarnedFor: Set<UUID> = []
 
+    static let defaultMaxConcurrentChecks = 4
+
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
-         notificationService: NotificationService) {
+         notificationService: NotificationService, maxConcurrentChecks: Int = HealthCheckService.defaultMaxConcurrentChecks) {
         self.endpointStore = endpointStore
         self.historyStore = historyStore
         self.dailyStatsStore = dailyStatsStore
         self.notificationService = notificationService
+        self.maxConcurrentChecks = max(1, maxConcurrentChecks)
     }
 
     func start() {
@@ -59,26 +63,65 @@ final class HealthCheckService: ObservableObject {
 
     private func checkDueEndpoints() async {
         let now = Date()
-        for endpoint in endpointStore.endpoints {
-            let interval = endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval
-            if let last = lastCheckedAt[endpoint.id], now.timeIntervalSince(last) < interval {
-                continue
-            }
-            lastCheckedAt[endpoint.id] = now
-            await performCheck(endpoint)
+        let workItems = makeDueCheckWorkItems(now: now)
+        guard !workItems.isEmpty else { return }
+
+        let outcomes = await Self.runCheckWorkItems(workItems, maxConcurrentChecks: maxConcurrentChecks)
+        for outcome in outcomes {
+            applyCheckOutcome(outcome)
         }
     }
 
-    private func performCheck(_ endpoint: Endpoint) async {
-        let previousResult = historyStore.lastResult(for: endpoint.id)
-        let secret = SecretStore.secret(for: endpoint.id.uuidString)
-        var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
-        result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
+    private func makeDueCheckWorkItems(now: Date) -> [CheckWork] {
+        let dueEndpoints = Self.dueEndpoints(
+            endpoints: endpointStore.endpoints,
+            lastCheckedAt: lastCheckedAt,
+            now: now,
+            globalCheckInterval: endpointStore.globalCheckInterval
+        )
+
+        return dueEndpoints.map { endpoint in
+            let interval = endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval
+            lastCheckedAt[endpoint.id] = now
+
+            return CheckWork(
+                endpoint: endpoint,
+                previousWasHealthy: historyStore.lastResult(for: endpoint.id)?.isHealthy,
+                secret: SecretStore.secret(for: endpoint.id.uuidString),
+                requestTimeout: endpointStore.requestTimeout,
+                intervalSeconds: interval,
+                cachedCertificateExpiresAt: certExpiryCache[endpoint.id] ?? nil,
+                certificateFetch: certificateFetch(for: endpoint, now: now),
+                startedAt: now
+            )
+        }
+    }
+
+    private func certificateFetch(for endpoint: Endpoint, now: Date) -> CertificateFetch? {
+        guard endpoint.url.scheme?.lowercased() == "https",
+              let host = endpoint.url.host,
+              lastCertCheckedAt[endpoint.id].map({ now.timeIntervalSince($0) >= certCheckInterval }) ?? true
+        else { return nil }
+
+        let port = UInt16(exactly: endpoint.url.port ?? 443) ?? 443
+        return CertificateFetch(host: host, port: port, timeout: min(endpointStore.requestTimeout, 10))
+    }
+
+    private func applyCheckOutcome(_ outcome: CheckOutcome) {
+        let endpoint = outcome.endpoint
+        guard endpointStore.endpoints.contains(where: { $0.id == endpoint.id }) else { return }
+
+        let result = outcome.result
+        if outcome.didRefreshCertificate {
+            lastCertCheckedAt[endpoint.id] = outcome.startedAt
+            certExpiryCache[endpoint.id] = result.certificateExpiresAt
+        }
+
         historyStore.record(result)
         dailyStatsStore.record(endpointId: endpoint.id, timestamp: result.timestamp, isHealthy: result.isHealthy,
-                                intervalSeconds: endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval)
+                                intervalSeconds: outcome.intervalSeconds)
 
-        let wasHealthy = previousResult?.isHealthy
+        let wasHealthy = outcome.previousWasHealthy
         if wasHealthy == true, !result.isHealthy {
             if endpointStore.notificationsEnabled {
                 notificationService.notifyDown(endpointName: endpoint.name, reason: result.failureReason)
@@ -101,23 +144,6 @@ final class HealthCheckService: ObservableObject {
         }
     }
 
-    /// Returns the endpoint's cached certificate expiry, refreshing it first if it's stale or
-    /// missing (only for HTTPS endpoints — everything else has no certificate).
-    private func refreshedCertificateExpiry(for endpoint: Endpoint) async -> Date? {
-        guard endpoint.url.scheme?.lowercased() == "https", let host = endpoint.url.host else { return nil }
-
-        let now = Date()
-        if let lastChecked = lastCertCheckedAt[endpoint.id], now.timeIntervalSince(lastChecked) < certCheckInterval {
-            return certExpiryCache[endpoint.id] ?? nil
-        }
-
-        let port = UInt16(endpoint.url.port ?? 443)
-        let expiry = await Self.fetchCertificateExpiry(host: host, port: port, timeout: min(endpointStore.requestTimeout, 10))
-        lastCertCheckedAt[endpoint.id] = now
-        certExpiryCache[endpoint.id] = expiry
-        return expiry
-    }
-
     private func updateOverallStatus() {
         guard !endpointStore.endpoints.isEmpty else {
             overallStatus = .unknown
@@ -134,6 +160,97 @@ final class HealthCheckService: ObservableObject {
     }
 
     // MARK: - Raw networking (no actor-isolated state touched here beyond value types)
+
+    struct CertificateFetch: Sendable {
+        let host: String
+        let port: UInt16
+        let timeout: TimeInterval
+    }
+
+    struct CheckWork: Sendable {
+        let endpoint: Endpoint
+        let previousWasHealthy: Bool?
+        let secret: String?
+        let requestTimeout: TimeInterval
+        let intervalSeconds: TimeInterval
+        let cachedCertificateExpiresAt: Date?
+        let certificateFetch: CertificateFetch?
+        let startedAt: Date
+    }
+
+    struct CheckOutcome: Sendable {
+        let endpoint: Endpoint
+        let previousWasHealthy: Bool?
+        let result: HealthCheckResult
+        let intervalSeconds: TimeInterval
+        let didRefreshCertificate: Bool
+        let startedAt: Date
+    }
+
+    nonisolated static func dueEndpoints(
+        endpoints: [Endpoint],
+        lastCheckedAt: [UUID: Date],
+        now: Date,
+        globalCheckInterval: TimeInterval
+    ) -> [Endpoint] {
+        endpoints.filter { endpoint in
+            let interval = endpoint.checkIntervalOverride ?? globalCheckInterval
+            guard let last = lastCheckedAt[endpoint.id] else { return true }
+            return now.timeIntervalSince(last) >= interval
+        }
+    }
+
+    nonisolated static func runCheckWorkItems(_ workItems: [CheckWork], maxConcurrentChecks: Int) async -> [CheckOutcome] {
+        let limit = max(1, maxConcurrentChecks)
+        var outcomes: [CheckOutcome] = []
+        outcomes.reserveCapacity(workItems.count)
+
+        await withTaskGroup(of: CheckOutcome.self) { group in
+            var iterator = workItems.makeIterator()
+
+            for _ in 0..<min(limit, workItems.count) {
+                guard let work = iterator.next() else { break }
+                group.addTask {
+                    await performCheckWork(work)
+                }
+            }
+
+            while let outcome = await group.next() {
+                outcomes.append(outcome)
+                if let nextWork = iterator.next() {
+                    group.addTask {
+                        await performCheckWork(nextWork)
+                    }
+                }
+            }
+        }
+
+        return outcomes
+    }
+
+    private nonisolated static func performCheckWork(_ work: CheckWork) async -> CheckOutcome {
+        var result = await executeCheck(endpoint: work.endpoint, timeout: work.requestTimeout, secret: work.secret)
+        let didRefreshCertificate = work.certificateFetch != nil
+
+        if let certificateFetch = work.certificateFetch {
+            result.certificateExpiresAt = await fetchCertificateExpiry(
+                host: certificateFetch.host,
+                port: certificateFetch.port,
+                timeout: certificateFetch.timeout
+            )
+        } else {
+            result.certificateExpiresAt = work.cachedCertificateExpiresAt
+        }
+
+        return CheckOutcome(
+            endpoint: work.endpoint,
+            previousWasHealthy: work.previousWasHealthy,
+            result: result,
+            intervalSeconds: work.intervalSeconds,
+            didRefreshCertificate: didRefreshCertificate,
+            startedAt: work.startedAt
+        )
+    }
 
     struct RawFetchResult {
         let statusCode: Int

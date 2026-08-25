@@ -362,6 +362,44 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertEqual(HealthCheckService.uptimePercentage(results: results) ?? -1, 100.0, accuracy: 0.001)
     }
 
+    // MARK: - Scheduler due selection
+
+    func testDueEndpointsIncludesNeverCheckedEndpoints() {
+        let endpoint = makeEndpoint()
+        let due = HealthCheckService.dueEndpoints(
+            endpoints: [endpoint],
+            lastCheckedAt: [:],
+            now: Date(timeIntervalSince1970: 100),
+            globalCheckInterval: 60
+        )
+
+        XCTAssertEqual(due.map(\.id), [endpoint.id])
+    }
+
+    func testDueEndpointsRespectsGlobalAndPerEndpointIntervals() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        var globalEndpoint = makeEndpoint()
+        globalEndpoint.name = "Global"
+        var customEndpoint = makeEndpoint()
+        customEndpoint.name = "Custom"
+        customEndpoint.checkIntervalOverride = 120
+        var notDueEndpoint = makeEndpoint()
+        notDueEndpoint.name = "Not Due"
+
+        let due = HealthCheckService.dueEndpoints(
+            endpoints: [globalEndpoint, customEndpoint, notDueEndpoint],
+            lastCheckedAt: [
+                globalEndpoint.id: now.addingTimeInterval(-60),
+                customEndpoint.id: now.addingTimeInterval(-119),
+                notDueEndpoint.id: now.addingTimeInterval(-10),
+            ],
+            now: now,
+            globalCheckInterval: 60
+        )
+
+        XCTAssertEqual(due.map(\.id), [globalEndpoint.id])
+    }
+
     // MARK: - TLS certificate expiry (pure threshold logic; the network fetch itself isn't mockable)
 
     func testDaysUntilExpiryRoundsDownToWholeDays() {

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
+    @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var dailyStatsStore: DailyStatsStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var editingEndpoint: Endpoint?
@@ -12,6 +13,7 @@ struct SettingsView: View {
     @State private var launchAtLoginError: String?
     @State private var intervalSelection: IntervalSelection = .preset(60)
     @State private var endpointFileError: String?
+    @State private var generalSettingsMessage: String?
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -80,10 +82,11 @@ struct SettingsView: View {
                         }
                     }
                     .onDelete { indexSet in
-                        for index in indexSet {
-                            let id = endpointStore.endpoints[index].id
+                        let ids = indexSet.map { endpointStore.endpoints[$0].id }
+                        for id in ids {
                             endpointStore.removeEndpoint(id: id)
                             SecretStore.deleteSecret(for: id.uuidString)
+                            historyStore.removeHistory(for: id)
                             dailyStatsStore.removeStats(for: id)
                         }
                     }
@@ -172,7 +175,7 @@ struct SettingsView: View {
                 if intervalSelection == .custom {
                     HStack {
                         Text("Custom (seconds)")
-                        TextField("", value: $endpointStore.globalCheckInterval, format: .number)
+                        TextField("", value: globalCheckIntervalBinding, format: .number)
                             .frame(width: 80)
                     }
                 }
@@ -183,11 +186,19 @@ struct SettingsView: View {
             Section {
                 HStack {
                     Text("Timeout (seconds)")
-                    TextField("", value: $endpointStore.requestTimeout, format: .number)
+                    TextField("", value: requestTimeoutBinding, format: .number)
                         .frame(width: 80)
                 }
             } header: {
                 Label("Request Timeout", systemImage: "timer")
+            }
+
+            if let generalSettingsMessage {
+                Section {
+                    Text(generalSettingsMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -212,6 +223,7 @@ struct SettingsView: View {
         .onChange(of: intervalSelection) { newValue in
             if case .preset(let seconds) = newValue {
                 endpointStore.globalCheckInterval = seconds
+                generalSettingsMessage = nil
             }
         }
     }
@@ -222,6 +234,37 @@ struct SettingsView: View {
         } else {
             intervalSelection = .custom
         }
+    }
+
+    private var globalCheckIntervalBinding: Binding<TimeInterval> {
+        Binding(
+            get: { endpointStore.globalCheckInterval },
+            set: { newValue in
+                let normalized = EndpointStore.normalizedCheckInterval(newValue)
+                endpointStore.globalCheckInterval = normalized
+                generalSettingsMessage = normalized == newValue
+                    ? nil
+                    : "Check frequency cannot be below \(Self.secondsText(EndpointStore.minimumCheckInterval))."
+                syncIntervalSelection()
+            }
+        )
+    }
+
+    private var requestTimeoutBinding: Binding<TimeInterval> {
+        Binding(
+            get: { endpointStore.requestTimeout },
+            set: { newValue in
+                let normalized = EndpointStore.normalizedRequestTimeout(newValue)
+                endpointStore.requestTimeout = normalized
+                generalSettingsMessage = normalized == newValue
+                    ? nil
+                    : "Timeout must be between \(Self.secondsText(EndpointStore.minimumRequestTimeout)) and \(Self.secondsText(EndpointStore.maximumRequestTimeout))."
+            }
+        )
+    }
+
+    private static func secondsText(_ seconds: TimeInterval) -> String {
+        "\(Int(seconds))s"
     }
 
     private var launchAtLoginBinding: Binding<Bool> {

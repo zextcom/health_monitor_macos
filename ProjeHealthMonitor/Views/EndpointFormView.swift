@@ -166,6 +166,12 @@ struct EndpointFormView: View {
             }
             .padding()
         }
+        .onChange(of: urlString) { _ in resetTestState() }
+        .onChange(of: checkType) { _ in resetTestState() }
+        .onChange(of: authType) { _ in resetTestState() }
+        .onChange(of: authUsername) { _ in resetTestState() }
+        .onChange(of: authHeaderName) { _ in resetTestState() }
+        .onChange(of: authSecret) { _ in resetTestState() }
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 480, idealHeight: 680, maxHeight: 820)
     }
 
@@ -224,6 +230,17 @@ struct EndpointFormView: View {
             return SecretStore.secret(for: originalEndpoint.id.uuidString)
         }
         return nil
+    }
+
+    private var currentTestSignature: String {
+        [
+            checkType.rawValue,
+            urlString.trimmingCharacters(in: .whitespacesAndNewlines),
+            authType.rawValue,
+            authUsername,
+            authHeaderName,
+            authSecret,
+        ].joined(separator: "|")
     }
 
     // MARK: - Test Connection section
@@ -319,13 +336,7 @@ struct EndpointFormView: View {
     }
 
     private var isURLValid: Bool {
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme != nil else {
-            return false
-        }
-        if checkType == .tcp {
-            return url.host != nil && url.port != nil
-        }
-        return true
+        EndpointStore.validatedURL(urlString, checkType: checkType) != nil
     }
 
     /// Returns (label, symbol, color) describing whether the current assertions would evaluate as
@@ -340,19 +351,21 @@ struct EndpointFormView: View {
     }
 
     private func runTest() async {
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme != nil else {
-            testErrorMessage = "Enter a valid URL first"
+        guard let url = EndpointStore.validatedURL(urlString, checkType: checkType) else {
+            testErrorMessage = checkType == .tcp
+                ? "Enter a valid TCP target, e.g. tcp://db.example.com:5432"
+                : "Enter a valid HTTP or HTTPS URL"
             return
         }
+        let signature = currentTestSignature
 
         if checkType == .tcp {
-            await runTCPTest(url: url)
+            await runTCPTest(url: url, signature: signature)
             return
         }
 
         isTesting = true
-        testErrorMessage = nil
-        testCertificateExpiresAt = nil
+        resetTestState()
         defer { isTesting = false }
 
         let headers = HealthCheckService.authHeaders(type: authType, username: authUsername,
@@ -360,22 +373,31 @@ struct EndpointFormView: View {
 
         switch await HealthCheckService.performRequest(url: url, timeout: Self.testTimeout, headers: headers) {
         case .success(let raw):
+            let parsedJSON = try? JSONSerialization.jsonObject(with: raw.data)
+            let flattenedFields = parsedJSON.map { HealthCheckService.flatten(json: $0) } ?? []
+            var certificateExpiresAt: Date?
+            if url.scheme?.lowercased() == "https", let host = url.host {
+                let port = UInt16(exactly: url.port ?? 443) ?? 443
+                certificateExpiresAt = await HealthCheckService.fetchCertificateExpiry(
+                    host: host, port: port, timeout: Self.testTimeout)
+            }
+
+            guard signature == currentTestSignature else { return }
+
             testStatusCode = raw.statusCode
             testElapsedMs = raw.elapsedMs
-            if let json = try? JSONSerialization.jsonObject(with: raw.data) {
+            if let json = parsedJSON {
                 testJSON = json
                 testIsJSON = true
-                testFlattenedFields = HealthCheckService.flatten(json: json)
+                testFlattenedFields = flattenedFields
             } else {
                 testJSON = nil
                 testIsJSON = false
                 testFlattenedFields = []
             }
-            if url.scheme?.lowercased() == "https", let host = url.host {
-                testCertificateExpiresAt = await HealthCheckService.fetchCertificateExpiry(
-                    host: host, port: UInt16(url.port ?? 443), timeout: Self.testTimeout)
-            }
+            testCertificateExpiresAt = certificateExpiresAt
         case .failure(let error):
+            guard signature == currentTestSignature else { return }
             testStatusCode = nil
             testElapsedMs = nil
             testJSON = nil
@@ -385,17 +407,17 @@ struct EndpointFormView: View {
         }
     }
 
-    private func runTCPTest(url: URL) async {
+    private func runTCPTest(url: URL, signature: String) async {
         guard let host = url.host, let port = url.port, let nwPort = UInt16(exactly: port) else {
             testErrorMessage = "Enter a valid host:port, e.g. tcp://db.example.com:5432"
             return
         }
         isTesting = true
-        testErrorMessage = nil
-        testTCPConnected = nil
+        resetTestState()
         defer { isTesting = false }
 
         let result = await HealthCheckService.performTCPConnect(host: host, port: nwPort, timeout: Self.testTimeout)
+        guard signature == currentTestSignature else { return }
         testTCPConnected = result.success
         testElapsedMs = result.elapsedMs
         testErrorMessage = result.success ? nil : (result.errorMessage ?? "Connection failed")
@@ -413,6 +435,19 @@ struct EndpointFormView: View {
         HealthCheckService.isExpiringSoon(expiry, thresholdDays: 14) ? .orange : .secondary
     }
 
+    private func resetTestState(clearError: Bool = true) {
+        testStatusCode = nil
+        testElapsedMs = nil
+        testJSON = nil
+        testFlattenedFields = []
+        testIsJSON = false
+        testCertificateExpiresAt = nil
+        testTCPConnected = nil
+        if clearError {
+            testErrorMessage = nil
+        }
+    }
+
     // MARK: - Save
 
     private func save() {
@@ -421,19 +456,17 @@ struct EndpointFormView: View {
             errorMessage = "Name cannot be empty"
             return
         }
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.scheme != nil else {
-            errorMessage = checkType == .tcp ? "Enter a valid host:port, e.g. tcp://db.example.com:5432" : "Enter a valid URL"
-            return
-        }
-        if checkType == .tcp, url.host == nil || url.port == nil {
-            errorMessage = "Enter a valid host:port, e.g. tcp://db.example.com:5432"
+        guard let url = EndpointStore.validatedURL(urlString, checkType: checkType) else {
+            errorMessage = checkType == .tcp
+                ? "Enter a valid TCP target, e.g. tcp://db.example.com:5432"
+                : "Enter a valid HTTP or HTTPS URL"
             return
         }
         var interval: TimeInterval?
         if useCustomInterval {
-            guard let seconds = TimeInterval(customInterval), seconds > 0 else {
-                errorMessage = "Enter a valid interval"
+            guard let seconds = TimeInterval(customInterval),
+                  EndpointStore.isValidCheckInterval(seconds) else {
+                errorMessage = "Interval must be at least \(Int(EndpointStore.minimumCheckInterval)) seconds"
                 return
             }
             interval = seconds
@@ -457,8 +490,8 @@ struct EndpointFormView: View {
             return
         }
 
-        guard let statusCode = Int(expectedStatusCode) else {
-            errorMessage = "Status code must be a number"
+        guard let statusCode = EndpointStore.validatedHTTPStatusCode(expectedStatusCode) else {
+            errorMessage = "Status code must be between \(EndpointStore.validStatusCodeRange.lowerBound) and \(EndpointStore.validStatusCodeRange.upperBound)"
             return
         }
         if authType == .customHeader, authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

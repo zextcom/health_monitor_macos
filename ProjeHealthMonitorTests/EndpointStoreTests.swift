@@ -24,11 +24,11 @@ final class EndpointStoreTests: XCTestCase {
     @MainActor func testDefaultsAreSeededOnFirstLaunch() {
         let store = EndpointStore(defaults: defaults)
         XCTAssertEqual(store.endpoints, [])
-        XCTAssertEqual(store.globalCheckInterval, 60)
+        XCTAssertEqual(store.globalCheckInterval, EndpointStore.defaultGlobalCheckInterval)
         XCTAssertTrue(store.notificationsEnabled)
         XCTAssertTrue(store.notifyOnRecovery)
         XCTAssertFalse(store.launchAtLoginEnabled)
-        XCTAssertEqual(store.requestTimeout, 10)
+        XCTAssertEqual(store.requestTimeout, EndpointStore.defaultRequestTimeout)
         XCTAssertFalse(store.hasCompletedOnboarding)
     }
 
@@ -85,6 +85,71 @@ final class EndpointStoreTests: XCTestCase {
         XCTAssertFalse(second.notificationsEnabled)
         XCTAssertFalse(second.notifyOnRecovery)
         XCTAssertEqual(second.requestTimeout, 20)
+    }
+
+    @MainActor func testPersistedTimingSettingsAreNormalizedOnLoad() {
+        defaults.set(0.5, forKey: "globalCheckInterval")
+        defaults.set(120.0, forKey: "requestTimeout")
+
+        let store = EndpointStore(defaults: defaults)
+
+        XCTAssertEqual(store.globalCheckInterval, EndpointStore.minimumCheckInterval)
+        XCTAssertEqual(store.requestTimeout, EndpointStore.maximumRequestTimeout)
+    }
+
+    @MainActor func testEndpointCustomIntervalsAreNormalizedOnLoad() throws {
+        var endpoint = makeEndpoint()
+        endpoint.checkIntervalOverride = 1
+        defaults.set(try JSONEncoder().encode([endpoint]), forKey: "endpoints")
+
+        let store = EndpointStore(defaults: defaults)
+
+        XCTAssertEqual(store.endpoints.first?.checkIntervalOverride, EndpointStore.minimumCheckInterval)
+    }
+
+    @MainActor func testTimingSettingsAreNormalizedBeforePersisting() {
+        let store = EndpointStore(defaults: defaults)
+
+        store.globalCheckInterval = -5
+        store.requestTimeout = 0
+
+        XCTAssertEqual(store.globalCheckInterval, EndpointStore.minimumCheckInterval)
+        XCTAssertEqual(store.requestTimeout, EndpointStore.minimumRequestTimeout)
+        XCTAssertEqual(defaults.double(forKey: "globalCheckInterval"), EndpointStore.minimumCheckInterval)
+        XCTAssertEqual(defaults.double(forKey: "requestTimeout"), EndpointStore.minimumRequestTimeout)
+    }
+
+    @MainActor func testEndpointCustomIntervalsAreNormalizedBeforePersisting() {
+        let store = EndpointStore(defaults: defaults)
+        var endpoint = makeEndpoint()
+        endpoint.checkIntervalOverride = 1
+
+        store.addEndpoint(endpoint)
+
+        XCTAssertEqual(store.endpoints.first?.checkIntervalOverride, EndpointStore.minimumCheckInterval)
+    }
+
+    @MainActor func testURLValidationAllowsOnlyHTTPOrHTTPSForHTTPChecks() {
+        XCTAssertNotNil(EndpointStore.validatedURL("https://example.test/health", checkType: .http))
+        XCTAssertNotNil(EndpointStore.validatedURL("http://example.test/health", checkType: .http))
+        XCTAssertNil(EndpointStore.validatedURL("file:///tmp/health.json", checkType: .http))
+        XCTAssertNil(EndpointStore.validatedURL("https:///missing-host", checkType: .http))
+        XCTAssertNil(EndpointStore.validatedURL("https://example.test:99999/health", checkType: .http))
+    }
+
+    @MainActor func testURLValidationRequiresTCPHostAndPortForTCPChecks() {
+        XCTAssertNotNil(EndpointStore.validatedURL("tcp://db.example.test:5432", checkType: .tcp))
+        XCTAssertNil(EndpointStore.validatedURL("https://db.example.test:5432", checkType: .tcp))
+        XCTAssertNil(EndpointStore.validatedURL("tcp://db.example.test", checkType: .tcp))
+        XCTAssertNil(EndpointStore.validatedURL("tcp://db.example.test:99999", checkType: .tcp))
+    }
+
+    @MainActor func testStatusCodeValidationIsLimitedToHTTPRange() {
+        XCTAssertEqual(EndpointStore.validatedHTTPStatusCode("200"), 200)
+        XCTAssertEqual(EndpointStore.validatedHTTPStatusCode(" 503 "), 503)
+        XCTAssertNil(EndpointStore.validatedHTTPStatusCode("99"))
+        XCTAssertNil(EndpointStore.validatedHTTPStatusCode("600"))
+        XCTAssertNil(EndpointStore.validatedHTTPStatusCode("abc"))
     }
 
     @MainActor func testExportDataRoundTripsThroughDecode() throws {

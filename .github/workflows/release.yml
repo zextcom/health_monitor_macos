@@ -8,6 +8,8 @@ on:
 jobs:
   release:
     runs-on: macos-14
+    env:
+      XCODE_MAJOR: "16"
     permissions:
       contents: write
     steps:
@@ -17,11 +19,15 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Select latest available Xcode
+      - name: Select Xcode 16
         run: |
-          LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          LATEST=$(find /Applications -maxdepth 1 -name "Xcode_${XCODE_MAJOR}*.app" -print | sort | tail -n 1)
+          if [ -z "$LATEST" ]; then
+            echo "Xcode ${XCODE_MAJOR}.x is not installed on this runner" >&2
+            exit 1
+          fi
           echo "Selecting $LATEST"
-          sudo xcode-select -s "$LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
           xcodebuild -version
 
       - name: Derive version from tag
