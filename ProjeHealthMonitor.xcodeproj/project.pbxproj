@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -182,8 +182,6 @@
 				C92CEF89E7FF872399CCCBF1 /* PBXTargetDependency */,
 			);
 			name = ProjeHealthMonitorTests;
-			packageProductDependencies = (
-			);
 			productName = ProjeHealthMonitorTests;
 			productReference = A7F0751012E31CFF8AB4E08F /* ProjeHealthMonitorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -223,6 +221,7 @@
 				};
 			};
 			buildConfigurationList = 84793223640AC2A92188DB2D /* Build configuration list for PBXProject "ProjeHealthMonitor" */;
+			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -230,12 +229,9 @@
 				en,
 			);
 			mainGroup = 44BACD2D00283BC1627D5E3A;
-			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				892E4DFD7F2E255490CB2DE6 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
-			preferredProjectObjectVersion = 77;
-			productRefGroup = F56DDE0E681D9127A8CA9EFC /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
