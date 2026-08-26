@@ -9,11 +9,11 @@ import OSLog
 /// atomic writes on every mutation.
 @MainActor
 final class DailyStatsStore: ObservableObject {
-    static let retentionDays = 30
+    nonisolated static let retentionDays = 30
     private static let logger = Logger(subsystem: "com.zext.healthmonitor", category: "DailyStatsStore")
     /// Days kept beyond `retentionDays` before pruning, so a day that just scrolled out of the
     /// display window isn't deleted the moment it stops being shown.
-    private static let pruneBufferDays = 5
+    private nonisolated static let pruneBufferDays = 5
 
     /// endpointId -> "yyyy-MM-dd" -> that day's rollup.
     @Published private(set) var stats: [UUID: [String: DailyStat]] = [:]

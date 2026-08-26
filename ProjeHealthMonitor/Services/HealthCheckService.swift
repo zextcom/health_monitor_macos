@@ -30,7 +30,7 @@ final class HealthCheckService: ObservableObject {
     private var certExpiryCache: [UUID: Date?] = [:]
     private var certWarnedFor: Set<UUID> = []
 
-    static let defaultMaxConcurrentChecks = 4
+    nonisolated static let defaultMaxConcurrentChecks = 4
 
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
          notificationService: NotificationService, maxConcurrentChecks: Int = HealthCheckService.defaultMaxConcurrentChecks) {

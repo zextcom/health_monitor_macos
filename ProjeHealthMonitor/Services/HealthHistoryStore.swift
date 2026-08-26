@@ -3,7 +3,7 @@ import OSLog
 
 @MainActor
 final class HealthHistoryStore: ObservableObject {
-    static let maxResultsPerEndpoint = 100
+    nonisolated static let maxResultsPerEndpoint = 100
     private static let logger = Logger(subsystem: "com.zext.healthmonitor", category: "HealthHistoryStore")
 
     @Published private(set) var history: [UUID: [HealthCheckResult]] = [:]

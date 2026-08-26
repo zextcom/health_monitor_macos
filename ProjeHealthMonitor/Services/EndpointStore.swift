@@ -3,12 +3,12 @@ import OSLog
 
 @MainActor
 final class EndpointStore: ObservableObject {
-    static let defaultGlobalCheckInterval: TimeInterval = 60
-    static let minimumCheckInterval: TimeInterval = 10
-    static let defaultRequestTimeout: TimeInterval = 10
-    static let minimumRequestTimeout: TimeInterval = 1
-    static let maximumRequestTimeout: TimeInterval = 60
-    static let validStatusCodeRange = 100...599
+    nonisolated static let defaultGlobalCheckInterval: TimeInterval = 60
+    nonisolated static let minimumCheckInterval: TimeInterval = 10
+    nonisolated static let defaultRequestTimeout: TimeInterval = 10
+    nonisolated static let minimumRequestTimeout: TimeInterval = 1
+    nonisolated static let maximumRequestTimeout: TimeInterval = 60
+    nonisolated static let validStatusCodeRange = 100...599
 
     private static let logger = Logger(subsystem: "com.zext.healthmonitor", category: "EndpointStore")
 
