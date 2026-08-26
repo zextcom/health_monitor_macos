@@ -5,7 +5,7 @@ A native SwiftUI macOS app that periodically checks the health-check endpoints o
 ## Requirements
 
 - macOS 13 (Ventura) or later
-- Xcode 16.x locally; CI selects the latest Xcode available on the macOS runner, matching the existing release workflow behavior
+- Xcode 16.x (CI selects the latest available Xcode 16 runner image)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (the project file is generated from `project.yml`)
 
 ```bash
@@ -85,7 +85,7 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it selects the latest Xcode available on the macOS runner, builds the project, zips the `.app`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
+`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it selects the latest available Xcode 16 runner image, builds the project, zips the `.app`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
 
 The EdDSA key pair was generated once via `generate_keys` (bundled with Sparkle's SPM package, at `SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys`); the public key lives in `project.yml`'s `SUPublicEDKey`, and the private key exists only in the `SPARKLE_PRIVATE_KEY` GitHub Actions secret and the generating machine's Keychain — it's never committed to the repo.
 
