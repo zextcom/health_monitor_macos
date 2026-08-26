@@ -85,13 +85,13 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it builds `Health Mntr.app`, publishes it as `HealthMntr-vX.Y.Z.zip`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
+`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it builds `Health Mntr.app`, publishes it as `HealthMntr-vX.Y.Z.zip` for Sparkle, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), creates `HealthMntr-vX.Y.Z.dmg` with an `/Applications` shortcut for drag-and-drop install, and publishes the zip + dmg + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
 
 The EdDSA key pair was generated once via `generate_keys` (bundled with Sparkle's SPM package, at `SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys`); the public key lives in `project.yml`'s `SUPublicEDKey`, and the private key exists only in the `SPARKLE_PRIVATE_KEY` GitHub Actions secret and the generating machine's Keychain — it's never committed to the repo.
 
 ## Out of Scope (v1)
 
-Remote/cloud sync, multi-user support, Grafana/Prometheus integration, iOS companion app. No Apple Developer Program membership is planned (no notarization) — as a result, downloaded updates remain ad-hoc signed (Gatekeeper may show a warning on first launch).
+Remote/cloud sync, multi-user support, Grafana/Prometheus integration, iOS companion app. No Apple Developer Program membership is planned (no Developer ID signing or notarization) — as a result, downloaded updates remain ad-hoc signed, so Gatekeeper may require manual approval on first launch.
 
 ## License
 

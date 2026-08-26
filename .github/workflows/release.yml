@@ -82,12 +82,29 @@ jobs:
             --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/" \
             release-archives
 
+      - name: Create installer DMG
+        id: dmg
+        run: |
+          APP_PATH="build/Build/Products/Release/Health Mntr.app"
+          DMG_NAME="HealthMntr-${{ steps.version.outputs.tag }}.dmg"
+          DMG_ROOT="$(mktemp -d)"
+          cp -R "$APP_PATH" "$DMG_ROOT/"
+          ln -s /Applications "$DMG_ROOT/Applications"
+          hdiutil create \
+            -volname "Health Mntr" \
+            -srcfolder "$DMG_ROOT" \
+            -ov \
+            -format UDZO \
+            "release-archives/$DMG_NAME"
+          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
             "release-archives/${{ steps.zip.outputs.zip_name }}" \
+            "release-archives/${{ steps.dmg.outputs.dmg_name }}" \
             "release-archives/appcast.xml" \
             --title "${{ steps.version.outputs.tag }}" \
             --generate-notes
