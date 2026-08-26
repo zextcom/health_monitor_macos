@@ -20,10 +20,6 @@ jobs:
       - name: Select latest available Xcode
         run: |
           LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          if [ -z "$LATEST" ]; then
-            echo "No Xcode installation found on this runner" >&2
-            exit 1
-          fi
           echo "Selecting $LATEST"
           sudo xcode-select -s "$LATEST"
           xcodebuild -version
