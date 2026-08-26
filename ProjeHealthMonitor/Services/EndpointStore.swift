@@ -151,7 +151,8 @@ final class EndpointStore: ObservableObject {
         case .http:
             guard let scheme = url.scheme?.lowercased(),
                   ["http", "https"].contains(scheme),
-                  url.host != nil
+                  url.host != nil,
+                  hasValidPortIfSpecified(in: trimmed)
             else { return nil }
             if let port = url.port, UInt16(exactly: port) == nil { return nil }
             return url
@@ -163,6 +164,32 @@ final class EndpointStore: ObservableObject {
             else { return nil }
             return url
         }
+    }
+
+    private static func hasValidPortIfSpecified(in urlString: String) -> Bool {
+        guard let schemeRange = urlString.range(of: "://") else { return true }
+        let afterScheme = urlString[schemeRange.upperBound...]
+        let authorityEnd = afterScheme.firstIndex(where: { "/?#".contains($0) }) ?? afterScheme.endIndex
+        var authority = String(afterScheme[..<authorityEnd])
+        if let atIndex = authority.lastIndex(of: "@") {
+            authority = String(authority[authority.index(after: atIndex)...])
+        }
+
+        let portText: String?
+        if authority.hasPrefix("[") {
+            guard let closeBracket = authority.firstIndex(of: "]") else { return false }
+            let suffix = authority[authority.index(after: closeBracket)...]
+            guard suffix.hasPrefix(":") else { return suffix.isEmpty }
+            portText = String(suffix.dropFirst())
+        } else if let colonIndex = authority.lastIndex(of: ":") {
+            portText = String(authority[authority.index(after: colonIndex)...])
+        } else {
+            portText = nil
+        }
+
+        guard let portText else { return true }
+        guard !portText.isEmpty, portText.allSatisfy(\.isNumber), let port = Int(portText) else { return false }
+        return UInt16(exactly: port) != nil
     }
 
     /// Endpoint configuration only — no auth secrets (those live in `SecretStore`/Keychain and

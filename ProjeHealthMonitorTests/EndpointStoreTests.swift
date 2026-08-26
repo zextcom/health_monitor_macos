@@ -135,6 +135,8 @@ final class EndpointStoreTests: XCTestCase {
         XCTAssertNil(EndpointStore.validatedURL("file:///tmp/health.json", checkType: .http))
         XCTAssertNil(EndpointStore.validatedURL("https:///missing-host", checkType: .http))
         XCTAssertNil(EndpointStore.validatedURL("https://example.test:99999/health", checkType: .http))
+        XCTAssertNil(EndpointStore.validatedURL("https://example.test:/health", checkType: .http))
+        XCTAssertNil(EndpointStore.validatedURL("https://example.test:abc/health", checkType: .http))
     }
 
     @MainActor func testURLValidationRequiresTCPHostAndPortForTCPChecks() {
