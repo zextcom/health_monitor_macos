@@ -44,7 +44,6 @@ struct ProjeHealthMonitorApp: App {
         Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(endpointStore)
-                .environmentObject(historyStore)
                 .environmentObject(dailyStatsStore)
                 .environmentObject(updaterViewModel)
         }

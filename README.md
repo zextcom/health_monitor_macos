@@ -5,7 +5,7 @@ A native SwiftUI macOS app that periodically checks the health-check endpoints o
 ## Requirements
 
 - macOS 13 (Ventura) or later
-- Xcode 16.x (CI selects the latest available Xcode 16 runner image)
+- Xcode 15+ (developed and tested with Xcode 16.1)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (the project file is generated from `project.yml`)
 
 ```bash
@@ -15,7 +15,7 @@ brew install xcodegen
 ## Build & Run
 
 ```bash
-cd health_monitor_ios
+cd health_check
 xcodegen generate
 open ProjeHealthMonitor.xcodeproj
 ```
@@ -43,7 +43,7 @@ xcodebuild -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -con
      {"success":true,"data":{"status":"healthy","database":true,"redis":true}}
      ```
      In this case, set the **JSON field** to `data.status` and the **Expected value** to `healthy` — dot notation reaches into nested fields. You can add multiple assertions, all of which must match (AND). Leave the list empty to check only the HTTP status code.
-4. Use the **General** tab to manage the global check interval (30s / 1min / 5min / custom seconds), request timeout, notification preferences, and "Launch at Login". Custom intervals must be at least 10 seconds; request timeout is limited to 1-60 seconds.
+4. Use the **General** tab to manage the global check interval (30s / 1min / 5min / custom seconds), request timeout, notification preferences, and "Launch at Login".
 5. Click the menu bar icon again to see each endpoint's current status (green/red dot), last check time, and a sparkline of its last ~30 checks.
 
 ### Status colors
@@ -85,13 +85,13 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it selects the latest available Xcode 16 runner image, builds the project, zips the `.app`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
+`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it builds the project, zips the `.app`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
 
 The EdDSA key pair was generated once via `generate_keys` (bundled with Sparkle's SPM package, at `SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys`); the public key lives in `project.yml`'s `SUPublicEDKey`, and the private key exists only in the `SPARKLE_PRIVATE_KEY` GitHub Actions secret and the generating machine's Keychain — it's never committed to the repo.
 
 ## Out of Scope (v1)
 
-Remote/cloud sync, multi-user support, Grafana/Prometheus integration, iOS companion app. No Apple Developer Program membership is planned in this phase (no Developer ID signing or notarization) — Sparkle still verifies update integrity with the EdDSA appcast signature, but downloaded builds remain ad-hoc signed and Gatekeeper may show a warning on first launch.
+Remote/cloud sync, multi-user support, Grafana/Prometheus integration, iOS companion app. No Apple Developer Program membership is planned (no notarization) — as a result, downloaded updates remain ad-hoc signed (Gatekeeper may show a warning on first launch).
 
 ## License
 

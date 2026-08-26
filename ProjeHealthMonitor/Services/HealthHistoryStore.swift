@@ -1,10 +1,8 @@
 import Foundation
-import OSLog
 
 @MainActor
 final class HealthHistoryStore: ObservableObject {
     static let maxResultsPerEndpoint = 100
-    private static let logger = Logger(subsystem: "com.zext.healthmonitor", category: "HealthHistoryStore")
 
     @Published private(set) var history: [UUID: [HealthCheckResult]] = [:]
 
@@ -16,11 +14,7 @@ final class HealthHistoryStore: ObservableObject {
         } else {
             let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("ProjeHealthMonitor", isDirectory: true)
-            do {
-                try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
-            } catch {
-                Self.logger.error("Failed to create Application Support directory: \(error.localizedDescription, privacy: .public)")
-            }
+            try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
             self.fileURL = supportDir.appendingPathComponent("history.json")
         }
         load()
@@ -50,25 +44,9 @@ final class HealthHistoryStore: ObservableObject {
     }
 
     private func load() {
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            if let cocoaError = error as? CocoaError, cocoaError.code == .fileReadNoSuchFile {
-                return
-            }
-            Self.logger.error("Failed to read history file: \(error.localizedDescription, privacy: .public)")
-            return
-        }
-
-        let decoded: [String: [HealthCheckResult]]
-        do {
-            decoded = try JSONDecoder().decode([String: [HealthCheckResult]].self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode history file: \(error.localizedDescription, privacy: .public)")
-            return
-        }
-
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        let decoded = try? JSONDecoder().decode([String: [HealthCheckResult]].self, from: data)
+        guard let decoded else { return }
         var result: [UUID: [HealthCheckResult]] = [:]
         for (key, value) in decoded {
             if let uuid = UUID(uuidString: key) {
@@ -83,11 +61,7 @@ final class HealthHistoryStore: ObservableObject {
         for (key, value) in history {
             encodable[key.uuidString] = value
         }
-        do {
-            let data = try JSONEncoder().encode(encodable)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            Self.logger.error("Failed to save history file: \(error.localizedDescription, privacy: .public)")
-        }
+        guard let data = try? JSONEncoder().encode(encodable) else { return }
+        try? data.write(to: fileURL, options: .atomic)
     }
 }
