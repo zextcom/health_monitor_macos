@@ -40,7 +40,7 @@ targets:
       path: ProjeHealthMonitor/Info.plist
       properties:
         LSUIElement: true
-        CFBundleDisplayName: Health Monitor
+        CFBundleDisplayName: Health Mntr
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: "© 2026 Zext"
