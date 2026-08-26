@@ -1,4 +1,19 @@
 import SwiftUI
+import AppKit
+
+@MainActor
+func presentSettingsWindow(using openWindow: OpenWindowAction) {
+    // Defer until the current menu-bar button action finishes so the popover can dismiss cleanly
+    // before we try to activate the app and focus the settings window.
+    DispatchQueue.main.async {
+        openWindow(id: "settings")
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+
+        if let settingsWindow = NSApp.windows.first(where: { $0.title == "Settings" }) {
+            settingsWindow.makeKeyAndOrderFront(nil)
+        }
+    }
+}
 
 @main
 struct ProjeHealthMonitorApp: App {

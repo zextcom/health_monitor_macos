@@ -20,10 +20,7 @@ struct MenuBarIconView: View {
                 // a fresh download, with no Dock icon or window to notice.
                 guard !endpointStore.hasCompletedOnboarding else { return }
                 endpointStore.hasCompletedOnboarding = true
-                openWindow(id: "settings")
-                // Without this, the new window can open behind whatever app already has focus —
-                // easy to miss entirely for a menu-bar-only app the user hasn't noticed yet.
-                NSApp.activate(ignoringOtherApps: true)
+                presentSettingsWindow(using: openWindow)
             }
     }
 
