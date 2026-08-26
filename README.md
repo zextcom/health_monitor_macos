@@ -1,4 +1,4 @@
-# Health Monitor
+# Health Mntr
 
 A native SwiftUI macOS app that periodically checks the health-check endpoints of multiple web services/APIs and shows their live status in the menu bar.
 
@@ -15,7 +15,7 @@ brew install xcodegen
 ## Build & Run
 
 ```bash
-cd health_check
+cd health_monitor_macos
 xcodegen generate
 open ProjeHealthMonitor.xcodeproj
 ```
@@ -85,7 +85,7 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it builds the project, zips the `.app`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
+`.github/workflows/release.yml` runs automatically on any `vX.Y.Z` tag push: it builds `Health Mntr.app`, publishes it as `HealthMntr-vX.Y.Z.zip`, generates an EdDSA-signed `appcast.xml` via Sparkle's `generate_appcast` (reading the private key from the `SPARKLE_PRIVATE_KEY` GitHub Actions secret), and publishes the zip + appcast.xml as a GitHub Release. `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are derived from the tag — no need to update `project.yml` by hand.
 
 The EdDSA key pair was generated once via `generate_keys` (bundled with Sparkle's SPM package, at `SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys`); the public key lives in `project.yml`'s `SUPublicEDKey`, and the private key exists only in the `SPARKLE_PRIVATE_KEY` GitHub Actions secret and the generating machine's Keychain — it's never committed to the repo.
 

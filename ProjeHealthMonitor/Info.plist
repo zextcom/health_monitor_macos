@@ -27,7 +27,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/zextcom/health_monitor_ios/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/zextcom/health_monitor_macos/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>dhlccRKzcLzfJRxhDlLR6IFnBH7M2RyDGQvPspQFVLk=</string>
 	<key>SUScheduledCheckInterval</key>

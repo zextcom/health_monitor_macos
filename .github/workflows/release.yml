@@ -57,8 +57,8 @@ jobs:
       - name: Zip app
         id: zip
         run: |
-          APP_PATH="build/Build/Products/Release/ProjeHealthMonitor.app"
-          ZIP_NAME="ProjeHealthMonitor-${{ steps.version.outputs.tag }}.zip"
+          APP_PATH="build/Build/Products/Release/Health Mntr.app"
+          ZIP_NAME="HealthMntr-${{ steps.version.outputs.tag }}.zip"
           mkdir -p release-archives
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-archives/$ZIP_NAME"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
