@@ -15,9 +15,11 @@ struct EndpointFormView: View {
     private static let testTimeout: TimeInterval = 10
 
     let originalEndpoint: Endpoint?
+    let suggestedGroupNames: [String]
     let onComplete: (FormResult) -> Void
 
     @State private var name: String
+    @State private var groupName: String
     @State private var urlString: String
     @State private var checkType: CheckType
     @State private var expectedStatusCode: String
@@ -43,10 +45,12 @@ struct EndpointFormView: View {
     /// Set only for `.tcp` test runs — `nil` while `.http` or before any test has run.
     @State private var testTCPConnected: Bool?
 
-    init(endpoint: Endpoint?, onComplete: @escaping (FormResult) -> Void) {
+    init(endpoint: Endpoint?, suggestedGroupNames: [String] = [], onComplete: @escaping (FormResult) -> Void) {
         self.originalEndpoint = endpoint
+        self.suggestedGroupNames = EndpointGrouping.normalizedGroupNames(from: suggestedGroupNames)
         self.onComplete = onComplete
         _name = State(initialValue: endpoint?.name ?? "")
+        _groupName = State(initialValue: endpoint?.groupName ?? "")
         _urlString = State(initialValue: endpoint?.url.absoluteString ?? "")
         _checkType = State(initialValue: endpoint?.checkType ?? .http)
         _expectedStatusCode = State(initialValue: String(endpoint?.expectedStatusCode ?? 200))
@@ -68,6 +72,29 @@ struct EndpointFormView: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
+                    TextField("Group", text: $groupName, prompt: Text("Optional"))
+                    Text("Optional. Leave blank to keep this endpoint ungrouped.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !availableGroupSuggestions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Existing groups")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(availableGroupSuggestions, id: \.self) { suggestion in
+                                        Button(suggestion) {
+                                            groupName = suggestion
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
+                                .padding(.vertical, 1)
+                            }
+                        }
+                    }
                     Picker("Check Type", selection: $checkType) {
                         ForEach(CheckType.allCases) { type in
                             Text(type.displayName).tag(type)
@@ -213,6 +240,10 @@ struct EndpointFormView: View {
     private var hasExistingSecret: Bool {
         guard let originalEndpoint, originalEndpoint.authType != .none else { return false }
         return true
+    }
+
+    private var availableGroupSuggestions: [String] {
+        EndpointGrouping.suggestedGroupNames(from: suggestedGroupNames, excluding: groupName)
     }
 
     /// The secret to use for a live "Test Connection" request: whatever's currently typed, or —
@@ -438,12 +469,14 @@ struct EndpointFormView: View {
             }
             interval = seconds
         }
+        let trimmedGroupName = EndpointGrouping.normalizedGroupName(groupName)
 
         var endpoint = originalEndpoint ?? Endpoint(name: trimmedName, url: url)
         endpoint.name = trimmedName
         endpoint.url = url
         endpoint.checkType = checkType
         endpoint.checkIntervalOverride = interval
+        endpoint.groupName = trimmedGroupName
 
         // TCP checks don't use status code / JSON assertions / auth — those are HTTP-only, so
         // saving as .tcp clears them rather than leaving stale HTTP config silently persisted.

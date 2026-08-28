@@ -28,11 +28,24 @@ struct PopoverContentView: View {
                         .padding()
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(filteredEndpoints) { endpoint in
-                                EndpointRowView(endpoint: endpoint, results: historyStore.results(for: endpoint.id))
-                                if endpoint.id != filteredEndpoints.last?.id {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(groupedSections) { section in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(section.title)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.secondary)
+                                        .padding(.bottom, 4)
+
+                                    ForEach(section.endpoints) { endpoint in
+                                        EndpointRowView(endpoint: endpoint, results: historyStore.results(for: endpoint.id))
+                                        if endpoint.id != section.endpoints.last?.id {
+                                            Divider()
+                                        }
+                                    }
+                                }
+                                if section.id != groupedSections.last?.id {
                                     Divider()
+                                        .padding(.top, 4)
                                 }
                             }
                         }
@@ -70,10 +83,10 @@ struct PopoverContentView: View {
     }
 
     private var filteredEndpoints: [Endpoint] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return endpointStore.endpoints }
-        return endpointStore.endpoints.filter {
-            $0.name.localizedCaseInsensitiveContains(trimmed) || $0.url.absoluteString.localizedCaseInsensitiveContains(trimmed)
-        }
+        endpointStore.filteredEndpoints(matching: searchText)
+    }
+
+    private var groupedSections: [EndpointGroupSection] {
+        endpointStore.groupedSections(for: filteredEndpoints)
     }
 }

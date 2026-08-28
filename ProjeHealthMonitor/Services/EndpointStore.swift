@@ -1,5 +1,53 @@
 import Foundation
 
+enum EndpointGrouping {
+    static let ungroupedTitle = "Ungrouped"
+
+    static func normalizedGroupName(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func normalizedGroupNames(from rawValues: [String?]) -> [String] {
+        var seen: Set<String> = []
+        var normalized: [String] = []
+
+        for value in rawValues {
+            guard let value, let normalizedValue = normalizedGroupName(value), !seen.contains(normalizedValue) else { continue }
+            seen.insert(normalizedValue)
+            normalized.append(normalizedValue)
+        }
+
+        return normalized.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    static func suggestedGroupNames(from groupNames: [String], excluding currentInput: String) -> [String] {
+        let excludedGroupName = normalizedGroupName(currentInput)
+        return normalizedGroupNames(from: groupNames)
+            .filter { $0 != excludedGroupName }
+    }
+
+    static func matchesSearch(_ endpoint: Endpoint, query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+
+        return endpoint.name.localizedCaseInsensitiveContains(trimmed)
+            || endpoint.url.absoluteString.localizedCaseInsensitiveContains(trimmed)
+            || (endpoint.groupName?.localizedCaseInsensitiveContains(trimmed) ?? false)
+    }
+}
+
+struct EndpointGroupSection: Identifiable, Equatable {
+    static let ungroupedTitle = EndpointGrouping.ungroupedTitle
+
+    let groupName: String?
+    let endpoints: [Endpoint]
+
+    var id: String { groupName ?? "__ungrouped__" }
+    var title: String { groupName ?? Self.ungroupedTitle }
+    var isUngrouped: Bool { groupName == nil }
+}
+
 @MainActor
 final class EndpointStore: ObservableObject {
     private enum Keys {
@@ -78,6 +126,41 @@ final class EndpointStore: ObservableObject {
 
     func removeEndpoint(id: UUID) {
         endpoints.removeAll { $0.id == id }
+    }
+
+    /// User-entered groups are lightweight metadata derived entirely from endpoints; there is no
+    /// separate group store, so suggestions come from currently used group names.
+    var usedGroupNames: [String] {
+        EndpointGrouping.normalizedGroupNames(from: endpoints.map(\.groupName))
+    }
+
+    func filteredEndpoints(matching query: String, within endpoints: [Endpoint]? = nil) -> [Endpoint] {
+        let source = endpoints ?? self.endpoints
+        return source.filter { EndpointGrouping.matchesSearch($0, query: query) }
+    }
+
+    func groupedSections(for endpoints: [Endpoint]? = nil) -> [EndpointGroupSection] {
+        let source = endpoints ?? self.endpoints
+        var namedGroups: [String: [Endpoint]] = [:]
+        var ungrouped: [Endpoint] = []
+
+        for endpoint in source {
+            guard let groupName = EndpointGrouping.normalizedGroupName(endpoint.groupName ?? "") else {
+                ungrouped.append(endpoint)
+                continue
+            }
+            namedGroups[groupName, default: []].append(endpoint)
+        }
+
+        var sections = namedGroups.keys
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .map { EndpointGroupSection(groupName: $0, endpoints: namedGroups[$0] ?? []) }
+
+        if !ungrouped.isEmpty {
+            sections.append(EndpointGroupSection(groupName: nil, endpoints: ungrouped))
+        }
+
+        return sections
     }
 
     /// Endpoint configuration only — no auth secrets (those live in `SecretStore`/Keychain and

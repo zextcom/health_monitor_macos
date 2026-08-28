@@ -29,6 +29,12 @@ xcodebuild -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -con
 xcodebuild -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -configuration Debug test
 ```
 
+If `xcodebuild` is pointed at Command Line Tools instead of the full Xcode app, use this canonical test command:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -configuration Debug -derivedDataPath /private/tmp/health-monitor-derived-data test
+```
+
 ## Usage
 
 1. On first launch, notification permission is requested — allow it (can be changed later in Settings).

@@ -35,7 +35,7 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 420)
         .sheet(isPresented: $isPresentingForm) {
-            EndpointFormView(endpoint: editingEndpoint) { result in
+            EndpointFormView(endpoint: editingEndpoint, suggestedGroupNames: endpointStore.usedGroupNames) { result in
                 if case .save(let endpoint, let secretUpdate) = result {
                     switch secretUpdate {
                     case .set(let value): SecretStore.setSecret(value, for: endpoint.id.uuidString)
@@ -64,27 +64,28 @@ struct SettingsView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(endpointStore.endpoints) { endpoint in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(endpoint.name).font(.headline)
-                                Text(endpoint.url.absoluteString)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    ForEach(endpointStore.groupedSections()) { section in
+                        Section(section.title) {
+                            ForEach(section.endpoints) { endpoint in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(endpoint.name).font(.headline)
+                                        Text(endpoint.url.absoluteString)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("Edit") {
+                                        editingEndpoint = endpoint
+                                        isPresentingForm = true
+                                    }
+                                }
                             }
-                            Spacer()
-                            Button("Edit") {
-                                editingEndpoint = endpoint
-                                isPresentingForm = true
+                            .onDelete { indexSet in
+                                for index in indexSet {
+                                    deleteEndpoint(section.endpoints[index])
+                                }
                             }
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            let id = endpointStore.endpoints[index].id
-                            endpointStore.removeEndpoint(id: id)
-                            SecretStore.deleteSecret(for: id.uuidString)
-                            dailyStatsStore.removeStats(for: id)
                         }
                     }
                 }
@@ -156,6 +157,12 @@ struct SettingsView: View {
         } catch {
             endpointFileError = "Couldn't import file: \(error.localizedDescription)"
         }
+    }
+
+    private func deleteEndpoint(_ endpoint: Endpoint) {
+        endpointStore.removeEndpoint(id: endpoint.id)
+        SecretStore.deleteSecret(for: endpoint.id.uuidString)
+        dailyStatsStore.removeStats(for: endpoint.id)
     }
 
     // MARK: - General
