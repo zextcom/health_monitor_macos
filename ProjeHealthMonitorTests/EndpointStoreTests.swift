@@ -30,6 +30,7 @@ final class EndpointStoreTests: XCTestCase {
         XCTAssertFalse(store.launchAtLoginEnabled)
         XCTAssertEqual(store.requestTimeout, 10)
         XCTAssertFalse(store.hasCompletedOnboarding)
+        XCTAssertEqual(store.historyRetentionDays, 7)
     }
 
     @MainActor func testOnboardingFlagPersistsAcrossStoreInstances() {
@@ -79,12 +80,14 @@ final class EndpointStoreTests: XCTestCase {
         first.notificationsEnabled = false
         first.notifyOnRecovery = false
         first.requestTimeout = 20
+        first.historyRetentionDays = 14
 
         let second = EndpointStore(defaults: defaults)
         XCTAssertEqual(second.globalCheckInterval, 300)
         XCTAssertFalse(second.notificationsEnabled)
         XCTAssertFalse(second.notifyOnRecovery)
         XCTAssertEqual(second.requestTimeout, 20)
+        XCTAssertEqual(second.historyRetentionDays, 14)
     }
 
     @MainActor func testExportDataRoundTripsThroughDecode() throws {

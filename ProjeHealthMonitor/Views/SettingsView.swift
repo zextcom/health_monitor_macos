@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var isPresentingForm = false
     @State private var launchAtLoginError: String?
     @State private var intervalSelection: IntervalSelection = .preset(60)
+    @State private var retentionSelection: RetentionSelection = .preset(7)
     @State private var endpointFileError: String?
     @State private var pendingDeletion: [Endpoint] = []
 
@@ -20,7 +21,13 @@ struct SettingsView: View {
         case custom
     }
 
+    private enum RetentionSelection: Hashable {
+        case preset(Int)
+        case custom
+    }
+
     private static let presets: [TimeInterval] = [30, 60, 300]
+    private static let retentionPresets = [1, 7, 30]
 
     var body: some View {
         TabView {
@@ -234,6 +241,27 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Keep history for", selection: $retentionSelection) {
+                    Text("1 day").tag(RetentionSelection.preset(1))
+                    Text("7 days").tag(RetentionSelection.preset(7))
+                    Text("30 days").tag(RetentionSelection.preset(30))
+                    Text("Custom").tag(RetentionSelection.custom)
+                }
+                if retentionSelection == .custom {
+                    HStack {
+                        Text("Custom (days)")
+                        TextField("", value: $endpointStore.historyRetentionDays, format: .number)
+                            .frame(width: 80)
+                    }
+                }
+                Text("Applies to per-check history (response time chart, incidents, export). A shorter interval with a longer window keeps more raw data on disk.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Label("History Retention", systemImage: "clock.arrow.circlepath")
+            }
+
+            Section {
                 Toggle("Notify when down", isOn: $endpointStore.notificationsEnabled)
                 Toggle("Notify when recovered", isOn: $endpointStore.notifyOnRecovery)
                     .disabled(!endpointStore.notificationsEnabled)
@@ -251,10 +279,18 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { syncIntervalSelection() }
+        .onAppear {
+            syncIntervalSelection()
+            syncRetentionSelection()
+        }
         .onChange(of: intervalSelection) { newValue in
             if case .preset(let seconds) = newValue {
                 endpointStore.globalCheckInterval = seconds
+            }
+        }
+        .onChange(of: retentionSelection) { newValue in
+            if case .preset(let days) = newValue {
+                endpointStore.historyRetentionDays = days
             }
         }
     }
@@ -264,6 +300,14 @@ struct SettingsView: View {
             intervalSelection = .preset(endpointStore.globalCheckInterval)
         } else {
             intervalSelection = .custom
+        }
+    }
+
+    private func syncRetentionSelection() {
+        if Self.retentionPresets.contains(endpointStore.historyRetentionDays) {
+            retentionSelection = .preset(endpointStore.historyRetentionDays)
+        } else {
+            retentionSelection = .custom
         }
     }
 

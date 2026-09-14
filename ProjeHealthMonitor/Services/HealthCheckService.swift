@@ -81,7 +81,7 @@ final class HealthCheckService: ObservableObject {
         let secret = SecretStore.secret(for: endpoint.id.uuidString)
         var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
         result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
-        historyStore.record(result)
+        historyStore.record(result, retentionDays: endpointStore.historyRetentionDays)
         dailyStatsStore.record(endpointId: endpoint.id, timestamp: result.timestamp, isHealthy: result.isHealthy,
                                 intervalSeconds: endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval)
 
@@ -348,7 +348,7 @@ final class HealthCheckService: ObservableObject {
     }
 
     /// Percentage of `results` that were healthy, or `nil` if there's no history yet.
-    /// Reflects whatever history is currently retained (see `HealthHistoryStore.maxResultsPerEndpoint`),
+    /// Reflects whatever history is currently retained (see `EndpointStore.historyRetentionDays`),
     /// not a fixed calendar window — callers should pair this with the covered time span if that matters.
     nonisolated static func uptimePercentage(results: [HealthCheckResult]) -> Double? {
         guard !results.isEmpty else { return nil }

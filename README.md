@@ -65,7 +65,7 @@ Automated tests (`ProjeHealthMonitorTests/HealthCheckServiceTests.swift`) use a 
 
 - `Models/`: `Endpoint`, `HealthCheckResult` — Codable data models
 - `Services/EndpointStore`: endpoint list + settings, JSON-encoded persistence in `UserDefaults`
-- `Services/HealthHistoryStore`: last 100 results per endpoint, stored as `history.json` under Application Support (ring buffer)
+- `Services/HealthHistoryStore`: raw per-check results per endpoint, stored as `history.json` under Application Support. Retained for a configurable number of days (General settings → History Retention, default 7), with a hard 20,000-per-endpoint safety cap regardless of age. Writes are debounced (at most one disk flush per 5s) rather than on every single check
 - `Services/HealthCheckService`: `@MainActor` central scheduler — periodic `URLSession` GET requests per the global/override interval, status code + optional JSON field checks, healthy↔down transition detection
 - `Services/NotificationService`: transition notifications via `UserNotifications`
 - `Services/SecretStore`: `Security`/Keychain wrapper for endpoint auth secrets — never stored as plain text in `UserDefaults`

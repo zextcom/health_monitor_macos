@@ -18,6 +18,7 @@ final class EndpointStore: ObservableObject {
         static let launchAtLoginEnabled = "launchAtLoginEnabled"
         static let requestTimeout = "requestTimeout"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let historyRetentionDays = "historyRetentionDays"
     }
 
     @Published var endpoints: [Endpoint] {
@@ -41,6 +42,11 @@ final class EndpointStore: ObservableObject {
     }
     @Published var requestTimeout: TimeInterval {
         didSet { defaults.set(requestTimeout, forKey: Keys.requestTimeout) }
+    }
+    /// How many days of raw per-check history `HealthHistoryStore` keeps before pruning (see
+    /// `HealthHistoryStore.record(_:retentionDays:)`).
+    @Published var historyRetentionDays: Int {
+        didSet { defaults.set(historyRetentionDays, forKey: Keys.historyRetentionDays) }
     }
     /// Set once the app has auto-opened Settings on first launch, so returning users who clear
     /// their endpoint list don't get it reopened on every launch.
@@ -80,6 +86,9 @@ final class EndpointStore: ObservableObject {
 
         let storedTimeout = defaults.double(forKey: Keys.requestTimeout)
         self.requestTimeout = storedTimeout > 0 ? storedTimeout : 10
+
+        let storedRetentionDays = defaults.integer(forKey: Keys.historyRetentionDays)
+        self.historyRetentionDays = storedRetentionDays > 0 ? storedRetentionDays : 7
 
         self.hasCompletedOnboarding = defaults.object(forKey: Keys.hasCompletedOnboarding) as? Bool ?? false
 
