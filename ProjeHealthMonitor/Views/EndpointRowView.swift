@@ -42,10 +42,12 @@ struct GroupBadge: View {
 struct EndpointRowView: View {
     let endpoint: Endpoint
     let results: [HealthCheckResult]
+    @EnvironmentObject var endpointStore: EndpointStore
 
     private static let certWarningThresholdDays = 14
 
     private var lastResult: HealthCheckResult? { results.last }
+    private var isSnoozed: Bool { HealthCheckService.isSnoozed(endpoint) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -60,6 +62,12 @@ struct EndpointRowView: View {
                     Circle()
                         .fill(GroupBadgeStyle.color(for: group))
                         .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                if isSnoozed {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
                 Spacer()
@@ -89,6 +97,27 @@ struct EndpointRowView: View {
             }
         }
         .padding(.vertical, 6)
+        .contextMenu {
+            Button("Snooze 30 min") { snooze(for: 30 * 60) }
+            Button("Snooze 2 Hours") { snooze(for: 2 * 60 * 60) }
+            Button("Snooze 8 Hours") { snooze(for: 8 * 60 * 60) }
+            if isSnoozed {
+                Divider()
+                Button("Clear Snooze") { clearSnooze() }
+            }
+        }
+    }
+
+    private func snooze(for interval: TimeInterval) {
+        var updated = endpoint
+        updated.snoozedUntil = Date().addingTimeInterval(interval)
+        endpointStore.updateEndpoint(updated)
+    }
+
+    private func clearSnooze() {
+        var updated = endpoint
+        updated.snoozedUntil = nil
+        endpointStore.updateEndpoint(updated)
     }
 
     private var dotColor: Color {
@@ -111,6 +140,9 @@ struct EndpointRowView: View {
         var parts = [endpoint.name]
         if let group = endpoint.group?.trimmingCharacters(in: .whitespacesAndNewlines), !group.isEmpty {
             parts.append("group \(group)")
+        }
+        if isSnoozed {
+            parts.append("snoozed")
         }
         parts.append(statusDescription)
         parts.append(lastCheckedText)
