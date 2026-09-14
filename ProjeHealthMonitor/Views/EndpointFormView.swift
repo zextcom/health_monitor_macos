@@ -18,6 +18,7 @@ struct EndpointFormView: View {
     let onComplete: (FormResult) -> Void
 
     @EnvironmentObject var endpointStore: EndpointStore
+    @EnvironmentObject var historyStore: HealthHistoryStore
 
     @State private var name: String
     @State private var urlString: String
@@ -34,6 +35,12 @@ struct EndpointFormView: View {
     @State private var group: String
     /// Never prefilled from the Keychain — left blank on edit means "keep the existing secret".
     @State private var authSecret: String = ""
+
+    /// Set (Add mode only) when `urlString` matches a `RetainedEndpointRecord` — surfaced as an
+    /// info banner near the URL field and, unless dismissed via `ignoreRetainedMatch`, reattached
+    /// to the saved endpoint by reusing its `id`.
+    @State private var matchedRetainedEndpoint: RetainedEndpointRecord?
+    @State private var ignoreRetainedMatch = false
 
     @State private var isTesting = false
     @State private var testStatusCode: Int?
@@ -80,6 +87,7 @@ struct EndpointFormView: View {
                     }
                     TextField(checkType == .tcp ? "Host:Port" : "URL", text: $urlString,
                               prompt: Text(checkType == .tcp ? "tcp://db.example.com:5432" : "https://api.example.com/health"))
+                    retainedMatchBanner
                     if checkType == .http {
                         TextField("Expected HTTP status code", text: $expectedStatusCode)
                     }
@@ -153,6 +161,8 @@ struct EndpointFormView: View {
                 }
             }
             .formStyle(.grouped)
+            .onChange(of: urlString) { _ in updateRetainedMatch() }
+            .onAppear { updateRetainedMatch() }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -200,6 +210,59 @@ struct EndpointFormView: View {
         if trimmed.isEmpty { return all }
         if all.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { return [] }
         return all.filter { $0.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    // MARK: - Retained history match (add mode only)
+
+    @ViewBuilder
+    private var retainedMatchBanner: some View {
+        if let matchedRetainedEndpoint {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Previous history found for this URL — \(retainedRangeDescription(for: matchedRetainedEndpoint))")
+                        .font(.caption)
+                    Text("Saving will reattach it to this endpoint.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Start fresh instead") {
+                        ignoreRetainedMatch = true
+                        self.matchedRetainedEndpoint = nil
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// Looks up a retained-deleted-endpoint match for the current `urlString` (add mode only —
+    /// editing an existing endpoint already has its own history under its own id).
+    private func updateRetainedMatch() {
+        guard originalEndpoint == nil, !ignoreRetainedMatch,
+              let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme != nil else {
+            matchedRetainedEndpoint = nil
+            return
+        }
+        matchedRetainedEndpoint = endpointStore.matchingRetainedEndpoint(forURL: url)
+    }
+
+    private func retainedRangeDescription(for record: RetainedEndpointRecord) -> String {
+        let results = historyStore.results(for: record.id)
+        guard let first = results.first?.timestamp, let last = results.last?.timestamp else {
+            let formatter = RelativeDateTimeFormatter()
+            return "deleted \(formatter.localizedString(for: record.deletedAt, relativeTo: Date()))"
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        if Calendar.current.isDate(first, inSameDayAs: last) {
+            return "\(results.count) checks on \(formatter.string(from: first))"
+        }
+        return "\(results.count) checks, \(formatter.string(from: first)) – \(formatter.string(from: last))"
     }
 
     // MARK: - Authentication section
@@ -472,7 +535,7 @@ struct EndpointFormView: View {
             interval = seconds
         }
 
-        var endpoint = originalEndpoint ?? Endpoint(name: trimmedName, url: url)
+        var endpoint = originalEndpoint ?? Endpoint(id: matchedRetainedEndpoint?.id ?? UUID(), name: trimmedName, url: url)
         endpoint.name = trimmedName
         endpoint.url = url
         endpoint.checkType = checkType
@@ -488,6 +551,7 @@ struct EndpointFormView: View {
             endpoint.authUsername = nil
             endpoint.authHeaderName = nil
             let secretUpdate: SecretUpdate = hasExistingSecret ? .cleared : .unchanged
+            reclaimRetainedMatchIfNeeded()
             onComplete(.save(endpoint, secret: secretUpdate))
             return
         }
@@ -532,6 +596,14 @@ struct EndpointFormView: View {
         endpoint.authUsername = authType == .basicAuth ? authUsername.trimmingCharacters(in: .whitespacesAndNewlines) : nil
         endpoint.authHeaderName = authType == .customHeader ? authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
 
+        reclaimRetainedMatchIfNeeded()
         onComplete(.save(endpoint, secret: secretUpdate))
+    }
+
+    /// Clears the retained record once its history/stats are about to go live again under the
+    /// reused id (see `EndpointStore.reclaimRetainedEndpoint`). No-op outside add mode / no match.
+    private func reclaimRetainedMatchIfNeeded() {
+        guard originalEndpoint == nil, let matchedRetainedEndpoint else { return }
+        endpointStore.reclaimRetainedEndpoint(id: matchedRetainedEndpoint.id)
     }
 }

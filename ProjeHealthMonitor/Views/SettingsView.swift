@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
+    @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var dailyStatsStore: DailyStatsStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var editingEndpoint: Endpoint?
@@ -12,6 +13,7 @@ struct SettingsView: View {
     @State private var launchAtLoginError: String?
     @State private var intervalSelection: IntervalSelection = .preset(60)
     @State private var endpointFileError: String?
+    @State private var pendingDeletion: [Endpoint] = []
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -82,12 +84,7 @@ struct SettingsView: View {
                                 }
                             }
                             .onDelete { offsets in
-                                for index in offsets {
-                                    let endpoint = section.endpoints[index]
-                                    endpointStore.removeEndpoint(id: endpoint.id)
-                                    SecretStore.deleteSecret(for: endpoint.id.uuidString)
-                                    dailyStatsStore.removeStats(for: endpoint.id)
-                                }
+                                pendingDeletion = offsets.map { section.endpoints[$0] }
                             }
                         } header: {
                             if groupedEndpointSections.count > 1 {
@@ -137,10 +134,39 @@ struct SettingsView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 8)
         }
+        .confirmationDialog(deletionDialogTitle, isPresented: isPendingDeletionPresented, titleVisibility: .visible) {
+            Button("Delete History Too", role: .destructive) { confirmDeletion(retainData: false) }
+            Button("Keep History") { confirmDeletion(retainData: true) }
+            Button("Cancel", role: .cancel) { pendingDeletion = [] }
+        } message: {
+            Text("Keeping history reattaches it automatically if you add a new endpoint with the same URL later. Unused history is purged automatically after \(EndpointStore.retainedDataExpiryDays) days.")
+        }
     }
 
     private var groupedEndpointSections: [EndpointGroupSection] {
         endpointStore.endpoints.groupedByGroupName()
+    }
+
+    private var isPendingDeletionPresented: Binding<Bool> {
+        Binding(get: { !pendingDeletion.isEmpty }, set: { if !$0 { pendingDeletion = [] } })
+    }
+
+    private var deletionDialogTitle: String {
+        pendingDeletion.count == 1
+            ? "Delete \"\(pendingDeletion[0].name)\"?"
+            : "Delete \(pendingDeletion.count) Endpoints?"
+    }
+
+    private func confirmDeletion(retainData: Bool) {
+        for endpoint in pendingDeletion {
+            endpointStore.removeEndpoint(id: endpoint.id, retainData: retainData)
+            SecretStore.deleteSecret(for: endpoint.id.uuidString)
+            if !retainData {
+                historyStore.removeHistory(for: endpoint.id)
+                dailyStatsStore.removeStats(for: endpoint.id)
+            }
+        }
+        pendingDeletion = []
     }
 
     private func exportEndpoints() {

@@ -2,8 +2,16 @@ import Foundation
 
 @MainActor
 final class EndpointStore: ObservableObject {
+    /// Days a retained-deleted endpoint's history/stats survive before being purged if never
+    /// reused (see `HealthCheckService.isRetainedRecordExpired`). Mirrors
+    /// `DailyStatsStore.retentionDays`'s existing convention. `nonisolated` — it's a plain
+    /// constant, and `HealthCheckService.isRetainedRecordExpired` (a `nonisolated static func`)
+    /// needs to reference it as a default parameter value.
+    nonisolated static let retainedDataExpiryDays = 30
+
     private enum Keys {
         static let endpoints = "endpoints"
+        static let retainedDeletedEndpoints = "retainedDeletedEndpoints"
         static let globalCheckInterval = "globalCheckInterval"
         static let notificationsEnabled = "notificationsEnabled"
         static let notifyOnRecovery = "notifyOnRecovery"
@@ -14,6 +22,10 @@ final class EndpointStore: ObservableObject {
 
     @Published var endpoints: [Endpoint] {
         didSet { persistEndpoints() }
+    }
+    /// Endpoints deleted with their history explicitly kept — see `removeEndpoint(id:retainData:)`.
+    @Published private(set) var retainedDeletedEndpoints: [RetainedEndpointRecord] {
+        didSet { persistRetainedEndpoints() }
     }
     @Published var globalCheckInterval: TimeInterval {
         didSet { defaults.set(globalCheckInterval, forKey: Keys.globalCheckInterval) }
@@ -52,6 +64,13 @@ final class EndpointStore: ObservableObject {
             self.endpoints = []
         }
 
+        if let data = defaults.data(forKey: Keys.retainedDeletedEndpoints),
+           let decoded = try? JSONDecoder().decode([RetainedEndpointRecord].self, from: data) {
+            self.retainedDeletedEndpoints = decoded
+        } else {
+            self.retainedDeletedEndpoints = []
+        }
+
         let storedInterval = defaults.double(forKey: Keys.globalCheckInterval)
         self.globalCheckInterval = storedInterval > 0 ? storedInterval : 60
 
@@ -76,8 +95,36 @@ final class EndpointStore: ObservableObject {
         endpoints[index] = endpoint
     }
 
-    func removeEndpoint(id: UUID) {
+    /// Removes the endpoint. If `retainData` is true, its history/stats aren't touched here —
+    /// the caller is expected to leave `HealthHistoryStore`/`DailyStatsStore` alone — and a
+    /// `RetainedEndpointRecord` is kept so `matchingRetainedEndpoint(forURL:)` can find it again;
+    /// it's purged automatically after `retainedDataExpiryDays` if never reused (see
+    /// `HealthCheckService.isRetainedRecordExpired`).
+    func removeEndpoint(id: UUID, retainData: Bool) {
+        guard let endpoint = endpoints.first(where: { $0.id == id }) else { return }
         endpoints.removeAll { $0.id == id }
+        if retainData {
+            retainedDeletedEndpoints.append(RetainedEndpointRecord(id: id, name: endpoint.name, url: endpoint.url, deletedAt: Date()))
+        }
+    }
+
+    /// First retained-deleted endpoint whose URL matches (case-insensitive), for surfacing
+    /// "previous history found" in the add-endpoint form. Two different deleted endpoints
+    /// coincidentally sharing a URL is an accepted edge case — first match wins.
+    func matchingRetainedEndpoint(forURL url: URL) -> RetainedEndpointRecord? {
+        retainedDeletedEndpoints.first { $0.url.absoluteString.caseInsensitiveCompare(url.absoluteString) == .orderedSame }
+    }
+
+    /// Clears a retained record once its history/stats are reattached to a newly-saved endpoint —
+    /// bookkeeping only, the underlying history/stats are left alone (they're "live" again).
+    func reclaimRetainedEndpoint(id: UUID) {
+        retainedDeletedEndpoints.removeAll { $0.id == id }
+    }
+
+    /// Same removal as `reclaimRetainedEndpoint`, used instead by the expiry sweep (see
+    /// `HealthCheckService`) when a retained record's data is being purged, not reattached.
+    func removeRetainedEndpointRecord(id: UUID) {
+        retainedDeletedEndpoints.removeAll { $0.id == id }
     }
 
     /// Distinct group names currently in use, trimmed, blanks excluded, sorted case-insensitively.
@@ -116,5 +163,11 @@ final class EndpointStore: ObservableObject {
         guard !isLoading else { return }
         guard let data = try? JSONEncoder().encode(endpoints) else { return }
         defaults.set(data, forKey: Keys.endpoints)
+    }
+
+    private func persistRetainedEndpoints() {
+        guard !isLoading else { return }
+        guard let data = try? JSONEncoder().encode(retainedDeletedEndpoints) else { return }
+        defaults.set(data, forKey: Keys.retainedDeletedEndpoints)
     }
 }

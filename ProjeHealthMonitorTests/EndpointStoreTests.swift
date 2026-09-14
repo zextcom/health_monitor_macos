@@ -51,7 +51,7 @@ final class EndpointStoreTests: XCTestCase {
         store.updateEndpoint(endpoint)
         XCTAssertEqual(store.endpoints.first?.name, "Renamed")
 
-        store.removeEndpoint(id: endpoint.id)
+        store.removeEndpoint(id: endpoint.id, retainData: false)
         XCTAssertTrue(store.endpoints.isEmpty)
     }
 
@@ -115,7 +115,7 @@ final class EndpointStoreTests: XCTestCase {
         let store = EndpointStore(defaults: defaults)
         let original = makeEndpoint(name: "Original")
         store.addEndpoint(original)
-        store.removeEndpoint(id: original.id) // simulate accidental deletion
+        store.removeEndpoint(id: original.id, retainData: false) // simulate accidental deletion
 
         let data = try JSONEncoder().encode([original])
         try store.importEndpoints(from: data)
@@ -220,5 +220,69 @@ final class EndpointStoreTests: XCTestCase {
         let sections = [a].groupedByGroupName()
         XCTAssertEqual(sections.count, 1)
         XCTAssertEqual(sections.first?.title, "Production")
+    }
+
+    // MARK: - removeEndpoint retainData / retainedDeletedEndpoints
+
+    @MainActor func testRemoveEndpointWithRetainDataAddsRetainedRecord() {
+        let store = EndpointStore(defaults: defaults)
+        let endpoint = makeEndpoint(name: "Kept")
+        store.addEndpoint(endpoint)
+
+        store.removeEndpoint(id: endpoint.id, retainData: true)
+
+        XCTAssertTrue(store.endpoints.isEmpty)
+        XCTAssertEqual(store.retainedDeletedEndpoints.count, 1)
+        XCTAssertEqual(store.retainedDeletedEndpoints.first?.id, endpoint.id)
+        XCTAssertEqual(store.retainedDeletedEndpoints.first?.name, "Kept")
+        XCTAssertEqual(store.retainedDeletedEndpoints.first?.url, endpoint.url)
+    }
+
+    @MainActor func testRemoveEndpointWithoutRetainDataAddsNoRetainedRecord() {
+        let store = EndpointStore(defaults: defaults)
+        let endpoint = makeEndpoint()
+        store.addEndpoint(endpoint)
+
+        store.removeEndpoint(id: endpoint.id, retainData: false)
+
+        XCTAssertEqual(store.retainedDeletedEndpoints, [])
+    }
+
+    @MainActor func testMatchingRetainedEndpointIsCaseInsensitive() {
+        let store = EndpointStore(defaults: defaults)
+        let endpoint = makeEndpoint()
+        store.addEndpoint(endpoint)
+        store.removeEndpoint(id: endpoint.id, retainData: true)
+
+        let upperURL = URL(string: endpoint.url.absoluteString.uppercased())!
+        XCTAssertEqual(store.matchingRetainedEndpoint(forURL: upperURL)?.id, endpoint.id)
+    }
+
+    @MainActor func testMatchingRetainedEndpointReturnsNilWhenNoneMatch() {
+        let store = EndpointStore(defaults: defaults)
+        XCTAssertNil(store.matchingRetainedEndpoint(forURL: URL(string: "https://nomatch.test")!))
+    }
+
+    @MainActor func testReclaimRetainedEndpointRemovesRecord() {
+        let store = EndpointStore(defaults: defaults)
+        let endpoint = makeEndpoint()
+        store.addEndpoint(endpoint)
+        store.removeEndpoint(id: endpoint.id, retainData: true)
+        XCTAssertEqual(store.retainedDeletedEndpoints.count, 1)
+
+        store.reclaimRetainedEndpoint(id: endpoint.id)
+        XCTAssertEqual(store.retainedDeletedEndpoints, [])
+    }
+
+    @MainActor func testRetainedDeletedEndpointsPersistAcrossStoreInstances() {
+        let first = EndpointStore(defaults: defaults)
+        let endpoint = makeEndpoint(name: "Persisted")
+        first.addEndpoint(endpoint)
+        first.removeEndpoint(id: endpoint.id, retainData: true)
+
+        let second = EndpointStore(defaults: defaults)
+        XCTAssertEqual(second.retainedDeletedEndpoints.count, 1)
+        XCTAssertEqual(second.retainedDeletedEndpoints.first?.id, endpoint.id)
+        XCTAssertEqual(second.retainedDeletedEndpoints.first?.name, "Persisted")
     }
 }

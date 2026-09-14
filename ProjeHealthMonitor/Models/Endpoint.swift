@@ -195,6 +195,17 @@ struct EndpointGroupSection: Identifiable {
     var id: String { title }
 }
 
+/// Bookkeeping for an endpoint that was deleted with its history explicitly kept (see
+/// `EndpointStore.removeEndpoint(id:retainData:)`). Deliberately minimal — only enough to find
+/// and describe the retained data, not to restore the deleted endpoint's full configuration
+/// (auth, assertions, check type), which is never kept.
+struct RetainedEndpointRecord: Codable, Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let url: URL
+    let deletedAt: Date
+}
+
 extension Array where Element == Endpoint {
     /// Groups by `group` name, case-insensitively sorted, with "Ungrouped" last (omitted entirely
     /// if every endpoint has a group).

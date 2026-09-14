@@ -406,6 +406,20 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertFalse(HealthCheckService.isExpiringSoon(nil, thresholdDays: 14, now: now))
     }
 
+    // MARK: - Retained-deleted-endpoint expiry (pure threshold logic; the sweep itself isn't unit-tested, see HealthCheckService)
+
+    func testIsRetainedRecordExpiredTrueAfterRetentionWindow() {
+        let now = Date(timeIntervalSince1970: 0)
+        let deletedAt = now.addingTimeInterval(-31 * 86400)
+        XCTAssertTrue(HealthCheckService.isRetainedRecordExpired(deletedAt: deletedAt, retentionDays: 30, now: now))
+    }
+
+    func testIsRetainedRecordExpiredFalseWithinRetentionWindow() {
+        let now = Date(timeIntervalSince1970: 0)
+        let deletedAt = now.addingTimeInterval(-29 * 86400)
+        XCTAssertFalse(HealthCheckService.isRetainedRecordExpired(deletedAt: deletedAt, retentionDays: 30, now: now))
+    }
+
     func testFetchCertificateExpiryAgainstRealHost() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_NETWORK_TESTS"] != nil,
                            "Skips by default — hits a real host. Set RUN_NETWORK_TESTS=1 to run.")

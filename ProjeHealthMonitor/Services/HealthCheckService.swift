@@ -29,6 +29,11 @@ final class HealthCheckService: ObservableObject {
     private var certExpiryCache: [UUID: Date?] = [:]
     private var certWarnedFor: Set<UUID> = []
 
+    /// Retained-deleted-endpoint records don't need to be swept every tick — hourly is plenty
+    /// (mirrors the cert-cache cadence pattern above).
+    private let retainedSweepInterval: TimeInterval = 60 * 60
+    private var lastRetainedSweepAt: Date?
+
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
          notificationService: NotificationService) {
         self.endpointStore = endpointStore
@@ -58,6 +63,8 @@ final class HealthCheckService: ObservableObject {
     }
 
     private func checkDueEndpoints() async {
+        pruneExpiredRetainedEndpoints()
+
         let now = Date()
         for endpoint in endpointStore.endpoints {
             let interval = endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval
@@ -116,6 +123,24 @@ final class HealthCheckService: ObservableObject {
         lastCertCheckedAt[endpoint.id] = now
         certExpiryCache[endpoint.id] = expiry
         return expiry
+    }
+
+    /// Purges history/stats for retained-deleted endpoints past `EndpointStore.retainedDataExpiryDays`
+    /// that were never reused — gated to run at most once per `retainedSweepInterval` since
+    /// `endpointStore.retainedDeletedEndpoints` is typically tiny/empty. Not unit-tested at this
+    /// instance-state level, consistent with the existing cert-cache above; `isRetainedRecordExpired`
+    /// is the pure, tested piece of logic.
+    private func pruneExpiredRetainedEndpoints() {
+        let now = Date()
+        if let last = lastRetainedSweepAt, now.timeIntervalSince(last) < retainedSweepInterval { return }
+        lastRetainedSweepAt = now
+
+        for record in endpointStore.retainedDeletedEndpoints
+        where Self.isRetainedRecordExpired(deletedAt: record.deletedAt, now: now) {
+            historyStore.removeHistory(for: record.id)
+            dailyStatsStore.removeStats(for: record.id)
+            endpointStore.removeRetainedEndpointRecord(id: record.id)
+        }
     }
 
     private func updateOverallStatus() {
@@ -445,6 +470,12 @@ final class HealthCheckService: ObservableObject {
     nonisolated static func isExpiringSoon(_ expiryDate: Date?, thresholdDays: Int, now: Date = Date()) -> Bool {
         guard let expiryDate else { return false }
         return daysUntilExpiry(expiryDate, from: now) <= thresholdDays
+    }
+
+    /// Whether a `RetainedEndpointRecord` deleted at `deletedAt` has passed its retention window
+    /// and should be purged (see `pruneExpiredRetainedEndpoints`).
+    nonisolated static func isRetainedRecordExpired(deletedAt: Date, retentionDays: Int = EndpointStore.retainedDataExpiryDays, now: Date = Date()) -> Bool {
+        now.timeIntervalSince(deletedAt) > TimeInterval(retentionDays * 24 * 60 * 60)
     }
 
     // MARK: - TCP connectivity
