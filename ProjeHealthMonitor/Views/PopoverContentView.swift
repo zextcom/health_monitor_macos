@@ -14,7 +14,7 @@ struct PopoverContentView: View {
                     Text("No endpoints added yet")
                         .foregroundStyle(.secondary)
                     Button("Add in Settings") {
-                        openWindow(id: "settings")
+                        presentSettingsWindow(using: openWindow)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -51,7 +51,7 @@ struct PopoverContentView: View {
             Divider()
 
             HStack {
-                Button("Settings") { openWindow(id: "settings") }
+                Button("Settings") { presentSettingsWindow(using: openWindow) }
                     .buttonStyle(.plain)
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
