@@ -69,7 +69,15 @@ struct SettingsView: View {
                             ForEach(section.endpoints) { endpoint in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(endpoint.name).font(.headline)
+                                        HStack(spacing: 4) {
+                                            Text(endpoint.name).font(.headline)
+                                            if HealthCheckService.isSnoozed(endpoint) {
+                                                Image(systemName: "moon.zzz.fill")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    .accessibilityHidden(true)
+                                            }
+                                        }
                                         Text(endpoint.url.absoluteString)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)

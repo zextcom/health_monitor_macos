@@ -3,10 +3,12 @@ import SwiftUI
 struct EndpointRowView: View {
     let endpoint: Endpoint
     let results: [HealthCheckResult]
+    @EnvironmentObject var endpointStore: EndpointStore
 
     private static let certWarningThresholdDays = 14
 
     private var lastResult: HealthCheckResult? { results.last }
+    private var isSnoozed: Bool { HealthCheckService.isSnoozed(endpoint) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -17,13 +19,19 @@ struct EndpointRowView: View {
                     .accessibilityHidden(true)
                 Text(endpoint.name)
                     .font(.system(size: 13, weight: .medium))
+                if isSnoozed {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
                 Spacer()
                 Text(lastCheckedText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(endpoint.name), \(statusDescription), \(lastCheckedText)")
+            .accessibilityLabel(accessibilityLabelText)
 
             SparklineView(results: Array(results.suffix(30)))
 
@@ -44,6 +52,35 @@ struct EndpointRowView: View {
             }
         }
         .padding(.vertical, 6)
+        .contextMenu {
+            Button("Snooze 30 min") { snooze(for: 30 * 60) }
+            Button("Snooze 2 Hours") { snooze(for: 2 * 60 * 60) }
+            Button("Snooze 8 Hours") { snooze(for: 8 * 60 * 60) }
+            if isSnoozed {
+                Divider()
+                Button("Clear Snooze") { clearSnooze() }
+            }
+        }
+    }
+
+    private var accessibilityLabelText: String {
+        var parts = [endpoint.name, statusDescription, lastCheckedText]
+        if isSnoozed {
+            parts.append("snoozed")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func snooze(for interval: TimeInterval) {
+        var updated = endpoint
+        updated.snoozedUntil = Date().addingTimeInterval(interval)
+        endpointStore.updateEndpoint(updated)
+    }
+
+    private func clearSnooze() {
+        var updated = endpoint
+        updated.snoozedUntil = nil
+        endpointStore.updateEndpoint(updated)
     }
 
     private var dotColor: Color {

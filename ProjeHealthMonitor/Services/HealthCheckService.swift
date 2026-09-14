@@ -80,11 +80,11 @@ final class HealthCheckService: ObservableObject {
 
         let wasHealthy = previousResult?.isHealthy
         if wasHealthy == true, !result.isHealthy {
-            if endpointStore.notificationsEnabled {
+            if endpointStore.notificationsEnabled, !Self.isSnoozed(endpoint) {
                 notificationService.notifyDown(endpointName: endpoint.name, reason: result.failureReason)
             }
         } else if wasHealthy == false, result.isHealthy {
-            if endpointStore.notificationsEnabled, endpointStore.notifyOnRecovery {
+            if endpointStore.notificationsEnabled, endpointStore.notifyOnRecovery, !Self.isSnoozed(endpoint) {
                 notificationService.notifyRecovered(endpointName: endpoint.name)
             }
         }
@@ -92,7 +92,7 @@ final class HealthCheckService: ObservableObject {
         let expiringSoon = Self.isExpiringSoon(result.certificateExpiresAt, thresholdDays: certExpiryWarningDays)
         if expiringSoon, !certWarnedFor.contains(endpoint.id) {
             certWarnedFor.insert(endpoint.id)
-            if endpointStore.notificationsEnabled, let expiry = result.certificateExpiresAt {
+            if endpointStore.notificationsEnabled, !Self.isSnoozed(endpoint), let expiry = result.certificateExpiresAt {
                 notificationService.notifyCertificateExpiringSoon(endpointName: endpoint.name,
                                                                     daysRemaining: Self.daysUntilExpiry(expiry))
             }
@@ -445,6 +445,14 @@ final class HealthCheckService: ObservableObject {
     nonisolated static func isExpiringSoon(_ expiryDate: Date?, thresholdDays: Int, now: Date = Date()) -> Bool {
         guard let expiryDate else { return false }
         return daysUntilExpiry(expiryDate, from: now) <= thresholdDays
+    }
+
+    /// Whether `endpoint`'s notifications should currently be suppressed for planned maintenance.
+    /// Checks/history/stats recording are unaffected — only `performCheck`'s notification calls
+    /// consult this.
+    nonisolated static func isSnoozed(_ endpoint: Endpoint, now: Date = Date()) -> Bool {
+        guard let snoozedUntil = endpoint.snoozedUntil else { return false }
+        return snoozedUntil > now
     }
 
     // MARK: - TCP connectivity

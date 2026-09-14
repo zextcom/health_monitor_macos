@@ -253,6 +253,27 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertEqual(decoded.jsonAssertions.first?.matchMode, .contains)
     }
 
+    func testDecodingEndpointWithoutSnoozedUntilDefaultsToNil() throws {
+        let legacyJSON = """
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy",
+            "url": "https://example.test/health",
+            "expectedStatusCode": 200
+        }
+        """
+        let endpoint = try JSONDecoder().decode(Endpoint.self, from: Data(legacyJSON.utf8))
+        XCTAssertNil(endpoint.snoozedUntil)
+    }
+
+    func testEncodingRoundTripsSnoozedUntil() throws {
+        var endpoint = makeEndpoint()
+        endpoint.snoozedUntil = Date(timeIntervalSince1970: 1_000_000)
+        let data = try JSONEncoder().encode(endpoint)
+        let decoded = try JSONDecoder().decode(Endpoint.self, from: data)
+        XCTAssertEqual(decoded.snoozedUntil, endpoint.snoozedUntil)
+    }
+
     func testDownOnNetworkTimeout() async {
         MockURLProtocol.requestHandler = { _ in
             throw URLError(.timedOut)
@@ -381,6 +402,26 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertTrue(HealthCheckService.isExpiringSoon(in5Days, thresholdDays: 14, now: now))
         XCTAssertFalse(HealthCheckService.isExpiringSoon(in30Days, thresholdDays: 14, now: now))
         XCTAssertFalse(HealthCheckService.isExpiringSoon(nil, thresholdDays: 14, now: now))
+    }
+
+    func testIsSnoozedTrueWhenSnoozedUntilIsInTheFuture() {
+        let now = Date(timeIntervalSince1970: 0)
+        var endpoint = makeEndpoint()
+        endpoint.snoozedUntil = now.addingTimeInterval(30 * 60)
+        XCTAssertTrue(HealthCheckService.isSnoozed(endpoint, now: now))
+    }
+
+    func testIsSnoozedFalseWhenSnoozedUntilIsInThePast() {
+        let now = Date(timeIntervalSince1970: 0)
+        var endpoint = makeEndpoint()
+        endpoint.snoozedUntil = now.addingTimeInterval(-30 * 60)
+        XCTAssertFalse(HealthCheckService.isSnoozed(endpoint, now: now))
+    }
+
+    func testIsSnoozedFalseWhenSnoozedUntilIsNil() {
+        let now = Date(timeIntervalSince1970: 0)
+        let endpoint = makeEndpoint()
+        XCTAssertFalse(HealthCheckService.isSnoozed(endpoint, now: now))
     }
 
     func testFetchCertificateExpiryAgainstRealHost() async throws {

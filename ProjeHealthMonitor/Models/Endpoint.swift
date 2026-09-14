@@ -100,6 +100,9 @@ struct Endpoint: Codable, Identifiable, Equatable {
     var checkIntervalOverride: TimeInterval?
     /// Optional display group used only for organizing endpoints in the UI.
     var groupName: String?
+    /// When set and in the future, notifications for this endpoint are suppressed (checks keep
+    /// running as normal — this only gates `NotificationService` calls in `HealthCheckService`).
+    var snoozedUntil: Date?
 
     /// Checks against the JSON response body, ANDed together. Empty means only the HTTP status
     /// code is checked.
@@ -116,7 +119,8 @@ struct Endpoint: Codable, Identifiable, Equatable {
     var authHeaderName: String?
 
     init(id: UUID = UUID(), name: String, url: URL, checkType: CheckType = .http, expectedStatusCode: Int = 200,
-         checkIntervalOverride: TimeInterval? = nil, groupName: String? = nil, jsonAssertions: [JSONAssertion] = [],
+         checkIntervalOverride: TimeInterval? = nil, groupName: String? = nil, snoozedUntil: Date? = nil,
+         jsonAssertions: [JSONAssertion] = [],
          authType: AuthType = .none, authUsername: String? = nil, authHeaderName: String? = nil) {
         self.id = id
         self.name = name
@@ -125,6 +129,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         self.expectedStatusCode = expectedStatusCode
         self.checkIntervalOverride = checkIntervalOverride
         self.groupName = groupName
+        self.snoozedUntil = snoozedUntil
         self.jsonAssertions = jsonAssertions
         self.authType = authType
         self.authUsername = authUsername
@@ -132,7 +137,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, url, checkType, expectedStatusCode, checkIntervalOverride, groupName
+        case id, name, url, checkType, expectedStatusCode, checkIntervalOverride, groupName, snoozedUntil
         case jsonAssertions
         case jsonFieldPath, expectedFieldValue // legacy single-assertion schema, decode-only
         case authType, authUsername, authHeaderName
@@ -147,6 +152,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         expectedStatusCode = try container.decodeIfPresent(Int.self, forKey: .expectedStatusCode) ?? 200
         checkIntervalOverride = try container.decodeIfPresent(TimeInterval.self, forKey: .checkIntervalOverride)
         groupName = try container.decodeIfPresent(String.self, forKey: .groupName)
+        snoozedUntil = try container.decodeIfPresent(Date.self, forKey: .snoozedUntil) ?? nil
         authType = try container.decodeIfPresent(AuthType.self, forKey: .authType) ?? .none
         authUsername = try container.decodeIfPresent(String.self, forKey: .authUsername)
         authHeaderName = try container.decodeIfPresent(String.self, forKey: .authHeaderName)
@@ -170,6 +176,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         try container.encode(expectedStatusCode, forKey: .expectedStatusCode)
         try container.encodeIfPresent(checkIntervalOverride, forKey: .checkIntervalOverride)
         try container.encodeIfPresent(groupName, forKey: .groupName)
+        try container.encodeIfPresent(snoozedUntil, forKey: .snoozedUntil)
         try container.encode(jsonAssertions, forKey: .jsonAssertions)
         try container.encode(authType, forKey: .authType)
         try container.encodeIfPresent(authUsername, forKey: .authUsername)
