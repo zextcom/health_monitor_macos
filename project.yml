@@ -48,6 +48,12 @@ targets:
         SUScheduledCheckInterval: 86400
         SUEnableAutomaticChecks: true
         SUPublicEDKey: dhlccRKzcLzfJRxhDlLR6IFnBH7M2RyDGQvPspQFVLk=
+        # Endpoints are arbitrary user-supplied URLs (including plain-HTTP internal/intranet
+        # services), so per-domain ATS exceptions aren't workable — this app is a network utility
+        # making outbound GET/TCP checks only, never rendering remote content, which is the
+        # standard justification for the blanket exception.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
 
   ProjeHealthMonitorTests:
     type: bundle.unit-test
