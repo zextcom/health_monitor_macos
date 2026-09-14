@@ -356,6 +356,59 @@ final class HealthCheckService: ObservableObject {
         return Double(healthyCount) / Double(results.count) * 100
     }
 
+    /// Derives down periods from runs of consecutive unhealthy results. `results` must be
+    /// chronological, oldest first — the same ordering `HealthHistoryStore.results(for:)` already
+    /// returns and `SparklineView`'s `results.suffix(30)` already assumes.
+    nonisolated static func incidents(from results: [HealthCheckResult]) -> [Incident] {
+        var incidents: [Incident] = []
+        var runStart: HealthCheckResult?
+        var startBoundaryUncertain = false
+
+        for (index, result) in results.enumerated() {
+            if !result.isHealthy {
+                if runStart == nil {
+                    runStart = result
+                    startBoundaryUncertain = (index == 0)
+                }
+            } else if let start = runStart {
+                incidents.append(Incident(startedAt: start.timestamp, endedAt: result.timestamp,
+                                           startBoundaryUncertain: startBoundaryUncertain, failureReason: start.failureReason))
+                runStart = nil
+                startBoundaryUncertain = false
+            }
+        }
+        if let start = runStart {
+            incidents.append(Incident(startedAt: start.timestamp, endedAt: nil,
+                                       startBoundaryUncertain: startBoundaryUncertain, failureReason: start.failureReason))
+        }
+        return incidents
+    }
+
+    /// CSV export of raw history for one endpoint — header row + one row per result. The only
+    /// free-text field (`failureReason`) is escaped per RFC4180 (quote-wrapped if it contains a
+    /// comma/quote/newline, internal quotes doubled).
+    nonisolated static func csv(for results: [HealthCheckResult], endpointName: String) -> String {
+        let isoFormatter = ISO8601DateFormatter()
+        var lines = ["endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason"]
+        for result in results {
+            let fields = [
+                csvEscape(endpointName),
+                isoFormatter.string(from: result.timestamp),
+                result.isHealthy ? "true" : "false",
+                result.responseTimeMs.map(String.init) ?? "",
+                result.statusCode.map(String.init) ?? "",
+                csvEscape(result.failureReason ?? ""),
+            ]
+            lines.append(fields.joined(separator: ","))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private nonisolated static func csvEscape(_ field: String) -> String {
+        guard field.contains(",") || field.contains("\"") || field.contains("\n") else { return field }
+        return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+
     struct FlattenedJSONField: Identifiable {
         var id: String { path }
         let path: String

@@ -406,6 +406,95 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertEqual(HealthCheckService.uptimePercentage(results: results) ?? -1, 100.0, accuracy: 0.001)
     }
 
+    // MARK: - Incidents
+
+    private func makeIncidentResult(isHealthy: Bool, secondsFromEpoch: TimeInterval, failureReason: String? = nil) -> HealthCheckResult {
+        HealthCheckResult(endpointId: UUID(), timestamp: Date(timeIntervalSince1970: secondsFromEpoch),
+                           isHealthy: isHealthy, responseTimeMs: 50, statusCode: isHealthy ? 200 : 500,
+                           failureReason: failureReason)
+    }
+
+    func testIncidentsIsEmptyWhenAllHealthy() {
+        let results = [makeIncidentResult(isHealthy: true, secondsFromEpoch: 0),
+                        makeIncidentResult(isHealthy: true, secondsFromEpoch: 60)]
+        XCTAssertEqual(HealthCheckService.incidents(from: results), [])
+    }
+
+    func testIncidentsIsEmptyForEmptyInput() {
+        XCTAssertEqual(HealthCheckService.incidents(from: []), [])
+    }
+
+    func testIncidentsClosesRunOnRecovery() {
+        let results = [
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 0),
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 60, failureReason: "Timed out"),
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 120, failureReason: "Timed out"),
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 180),
+        ]
+        let incidents = HealthCheckService.incidents(from: results)
+        XCTAssertEqual(incidents.count, 1)
+        XCTAssertEqual(incidents[0].startedAt, Date(timeIntervalSince1970: 60))
+        XCTAssertEqual(incidents[0].endedAt, Date(timeIntervalSince1970: 180))
+        XCTAssertEqual(incidents[0].failureReason, "Timed out")
+        XCTAssertFalse(incidents[0].startBoundaryUncertain)
+    }
+
+    func testIncidentsLeavesRunOpenWhenStillDownAtEndOfHistory() {
+        let results = [
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 0),
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 60, failureReason: "Connection refused"),
+        ]
+        let incidents = HealthCheckService.incidents(from: results)
+        XCTAssertEqual(incidents.count, 1)
+        XCTAssertNil(incidents[0].endedAt)
+    }
+
+    func testIncidentsFlagsUncertainStartWhenFirstResultIsAlreadyDown() {
+        let results = [
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 0, failureReason: "Timed out"),
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 60),
+        ]
+        let incidents = HealthCheckService.incidents(from: results)
+        XCTAssertEqual(incidents.count, 1)
+        XCTAssertTrue(incidents[0].startBoundaryUncertain)
+    }
+
+    func testIncidentsDetectsMultipleSeparateRuns() {
+        let results = [
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 0),
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 60),
+            makeIncidentResult(isHealthy: false, secondsFromEpoch: 120),
+            makeIncidentResult(isHealthy: true, secondsFromEpoch: 180),
+        ]
+        XCTAssertEqual(HealthCheckService.incidents(from: results).count, 2)
+    }
+
+    // MARK: - CSV export
+
+    func testCSVIncludesHeaderRow() {
+        XCTAssertEqual(HealthCheckService.csv(for: [], endpointName: "API").split(separator: "\n").first,
+                        "endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason")
+    }
+
+    func testCSVEscapesFailureReasonContainingComma() {
+        let result = makeIncidentResult(isHealthy: false, secondsFromEpoch: 0, failureReason: "Expected 200, got 500")
+        let csv = HealthCheckService.csv(for: [result], endpointName: "API")
+        XCTAssertTrue(csv.contains("\"Expected 200, got 500\""))
+    }
+
+    func testCSVEscapesFailureReasonContainingQuote() {
+        let result = makeIncidentResult(isHealthy: false, secondsFromEpoch: 0, failureReason: "field \"status\" mismatch")
+        let csv = HealthCheckService.csv(for: [result], endpointName: "API")
+        XCTAssertTrue(csv.contains("\"field \"\"status\"\" mismatch\""))
+    }
+
+    func testCSVOmitsFailureReasonQuotingWhenPlainText() {
+        let result = makeIncidentResult(isHealthy: true, secondsFromEpoch: 0)
+        let csv = HealthCheckService.csv(for: [result], endpointName: "API")
+        let dataRow = csv.split(separator: "\n").last!
+        XCTAssertFalse(dataRow.contains("\""))
+    }
+
     // MARK: - TLS certificate expiry (pure threshold logic; the network fetch itself isn't mockable)
 
     func testDaysUntilExpiryRoundsDownToWholeDays() {

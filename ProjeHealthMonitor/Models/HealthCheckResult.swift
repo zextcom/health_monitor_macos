@@ -26,3 +26,20 @@ struct HealthCheckResult: Codable, Identifiable, Equatable {
         self.certificateExpiresAt = certificateExpiresAt
     }
 }
+
+/// A single down period derived from a run of consecutive unhealthy `HealthCheckResult`s — see
+/// `HealthCheckService.incidents(from:)`. Not persisted; recomputed from whatever raw history is
+/// currently retained (`HealthHistoryStore`/`EndpointStore.historyRetentionDays`), so an incident
+/// near either edge of that window may be incomplete — `startBoundaryUncertain`/`endedAt == nil`
+/// flag that rather than silently presenting a guess as fact.
+struct Incident: Identifiable, Equatable {
+    var id: Date { startedAt }
+    let startedAt: Date
+    /// `nil` means the down run was still ongoing as of the most recent retained check — either
+    /// truly ongoing, or the recovery simply fell outside the retention window.
+    let endedAt: Date?
+    /// `true` when this run starts at the very first retained result for the endpoint — the real
+    /// start may be older than what's retained, so `startedAt` is a lower bound, not a fact.
+    let startBoundaryUncertain: Bool
+    let failureReason: String?
+}

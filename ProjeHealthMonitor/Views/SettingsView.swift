@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var retentionSelection: RetentionSelection = .preset(7)
     @State private var endpointFileError: String?
     @State private var pendingDeletion: [Endpoint] = []
+    @State private var selectedEndpointForDetail: Endpoint?
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -350,13 +351,22 @@ struct SettingsView: View {
             } else {
                 List {
                     ForEach(endpointStore.endpoints) { endpoint in
-                        EndpointStatsRowView(
-                            endpoint: endpoint,
-                            dailyStats: dailyStatsStore.dailyStats(for: endpoint.id)
-                        )
+                        Button {
+                            selectedEndpointForDetail = endpoint
+                        } label: {
+                            EndpointStatsRowView(
+                                endpoint: endpoint,
+                                dailyStats: dailyStatsStore.dailyStats(for: endpoint.id)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
+        }
+        .sheet(item: $selectedEndpointForDetail) { endpoint in
+            EndpointDetailView(endpoint: endpoint)
+                .environmentObject(historyStore)
         }
     }
 
