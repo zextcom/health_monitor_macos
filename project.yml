@@ -30,24 +30,29 @@ targets:
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: ProjeHealthMonitor/Info.plist
         GENERATE_INFOPLIST_FILE: false
-        CODE_SIGN_ENTITLEMENTS: ProjeHealthMonitor/ProjeHealthMonitor.entitlements
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Debug:
-          # Local dev builds stay ad-hoc/automatic — no Team ID needed to build and run locally.
-          # Hardened Runtime is off here too: it would otherwise reject loading Sparkle.framework
-          # (separately signed, from its own SPM release artifact) under an ad-hoc identity.
+          # Ad-hoc/automatic, no team — this is also what CI's ci.yml builds and tests, on a
+          # fresh runner with no Apple account signed in and no registered device, so it must
+          # never require a real provisioning profile. That's why the entitlements file (below,
+          # Release-only) isn't applied here either: the iCloud key-value store entitlement is
+          # provisioning-gated and would turn every CI run into a signing failure. To manually
+          # test iCloud sync in a local Debug build, temporarily override on the command line —
+          # xcodebuild ... CODE_SIGN_ENTITLEMENTS=ProjeHealthMonitor/ProjeHealthMonitor.entitlements
+          # DEVELOPMENT_TEAM=4MSY72K4VX -allowProvisioningUpdates — or switch to Release locally.
           CODE_SIGN_STYLE: Automatic
           ENABLE_HARDENED_RUNTIME: false
         Release:
           # Real signing (and Hardened Runtime, required for notarization) only for Release
           # builds — this is what CI's release workflow builds and notarizes. Sparkle's own XPC
           # services are signed with Sparkle's certificate, not ours, hence
-          # com.apple.security.cs.disable-library-validation in the entitlements file above.
+          # com.apple.security.cs.disable-library-validation in the entitlements file.
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Developer ID Application"
           DEVELOPMENT_TEAM: 4MSY72K4VX
+          CODE_SIGN_ENTITLEMENTS: ProjeHealthMonitor/ProjeHealthMonitor.entitlements
           ENABLE_HARDENED_RUNTIME: true
     dependencies:
       - package: Sparkle

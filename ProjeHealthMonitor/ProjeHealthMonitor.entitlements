@@ -8,5 +8,10 @@
 	     see https://sparkle-project.org/documentation/#hardened-runtime-and-notarization -->
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
+	<!-- Enables NSUbiquitousKeyValueStore for opt-in endpoint-list sync across the user's own
+	     Macs (see EndpointStore's iCloud sync layer). Does not require the CloudKit container
+	     also registered on the App ID — that's for full CloudKit record sync, unused here. -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
 </dict>
 </plist>

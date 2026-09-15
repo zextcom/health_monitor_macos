@@ -340,6 +340,15 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Sync endpoints via iCloud", isOn: $endpointStore.iCloudSyncEnabled)
+                Text("Keeps your endpoint list in sync across your own Macs signed into the same iCloud account. Auth secrets stay in each Mac's own Keychain and are never synced.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Label("iCloud Sync", systemImage: "icloud")
+            }
+
+            Section {
                 KeyboardShortcuts.Recorder("Open Settings:", name: .openSettings)
                 Text("Opens Settings from anywhere — the popover itself can't be toggled from a global shortcut (a SwiftUI/MenuBarExtra limitation).")
                     .font(.caption2)
