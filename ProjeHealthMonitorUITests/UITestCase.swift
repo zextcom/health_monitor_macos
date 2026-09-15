@@ -75,7 +75,10 @@ class UITestCase: XCTestCase {
         }
 
         let moreButton = settingsWindow.popUpButtons["more toolbar items"]
-        XCTAssertTrue(moreButton.waitForExistence(timeout: 5),
+        if !moreButton.waitForExistence(timeout: 5) {
+            print("DIAGNOSTIC_TREE:\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(moreButton.exists,
                       "Neither a direct \"\(title)\" tab button nor the \"more toolbar items\" popup appeared")
         moreButton.click()
 
