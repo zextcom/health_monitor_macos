@@ -98,6 +98,7 @@
 		E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistoryStoreTests.swift; sourceTree = "<group>"; };
 		F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckServiceTests.swift; sourceTree = "<group>"; };
 		FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjeHealthMonitorApp.swift; sourceTree = "<group>"; };
+		FD60554FDACAB8E62482E152 /* ProjeHealthMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProjeHealthMonitor.entitlements; sourceTree = "<group>"; };
 		FEE21C47ACEF036897E38750 /* Endpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoint.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -154,6 +155,7 @@
 			children = (
 				DBAEBF4C3A95465854C98B90 /* Assets.xcassets */,
 				13F4715B5F3D95043E0D4B74 /* Info.plist */,
+				FD60554FDACAB8E62482E152 /* ProjeHealthMonitor.entitlements */,
 				FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */,
 				CC7EDA1338D1E5702183538A /* Models */,
 				12D3D54577D6F26BC280B2BB /* Services */,
@@ -282,9 +284,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					7BFF51B90F6CC4E791BCF188 = {
-						ProvisioningStyle = Automatic;
-					};
 					AD20ADC105FED2DF5752012F = {
 						TestTargetID = 7BFF51B90F6CC4E791BCF188;
 					};
@@ -475,6 +474,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ProjeHealthMonitor/ProjeHealthMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -562,10 +562,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = ProjeHealthMonitor/ProjeHealthMonitor.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_HARDENED_RUNTIME = NO;
+				DEVELOPMENT_TEAM = 4MSY72K4VX;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProjeHealthMonitor/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

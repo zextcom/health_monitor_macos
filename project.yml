@@ -30,14 +30,25 @@ targets:
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: ProjeHealthMonitor/Info.plist
         GENERATE_INFOPLIST_FILE: false
-        CODE_SIGN_STYLE: Automatic
-        # Hardened Runtime's library validation rejects loading Sparkle.framework at launch —
-        # it's separately ad-hoc signed (from its own SPM release artifact) and, without a real
-        # Team ID on either side, that never counts as a match. Since we don't notarize, Hardened
-        # Runtime provides no benefit here anyway, only this breakage.
-        ENABLE_HARDENED_RUNTIME: false
+        CODE_SIGN_ENTITLEMENTS: ProjeHealthMonitor/ProjeHealthMonitor.entitlements
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          # Local dev builds stay ad-hoc/automatic — no Team ID needed to build and run locally.
+          # Hardened Runtime is off here too: it would otherwise reject loading Sparkle.framework
+          # (separately signed, from its own SPM release artifact) under an ad-hoc identity.
+          CODE_SIGN_STYLE: Automatic
+          ENABLE_HARDENED_RUNTIME: false
+        Release:
+          # Real signing (and Hardened Runtime, required for notarization) only for Release
+          # builds — this is what CI's release workflow builds and notarizes. Sparkle's own XPC
+          # services are signed with Sparkle's certificate, not ours, hence
+          # com.apple.security.cs.disable-library-validation in the entitlements file above.
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          DEVELOPMENT_TEAM: 4MSY72K4VX
+          ENABLE_HARDENED_RUNTIME: true
     dependencies:
       - package: Sparkle
       - package: KeyboardShortcuts
