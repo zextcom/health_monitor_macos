@@ -1,13 +1,14 @@
 import XCTest
 
+@MainActor
 final class EndpointFormUITests: UITestCase {
     /// `.invalid` is an IANA-reserved TLD guaranteed to never resolve — safe to use as a health
     /// check target in a UI test without making a real network request succeed or fail flakily.
     private static let testURL = "https://example.invalid/health"
 
-    private func openAddEndpointForm() -> XCUIElement {
-        let settingsWindow = openSettingsWindow()
-        selectSettingsTab("Endpoints", in: settingsWindow)
+    private func openAddEndpointForm(in app: XCUIApplication) -> XCUIElement {
+        let settingsWindow = Self.openSettingsWindow(in: app)
+        Self.selectSettingsTab("Endpoints", in: settingsWindow, app: app)
         settingsWindow.buttons["Add Endpoint"].click()
         let sheetTitle = settingsWindow.staticTexts["Add Endpoint"]
         XCTAssertTrue(sheetTitle.waitForExistence(timeout: 5), "Add Endpoint sheet never appeared")
@@ -15,7 +16,9 @@ final class EndpointFormUITests: UITestCase {
     }
 
     func testAddEndpointWithNameAndURLAddsItToTheList() {
-        let settingsWindow = openAddEndpointForm()
+        let app = Self.launchApp()
+        defer { app.terminate() }
+        let settingsWindow = openAddEndpointForm(in: app)
         let name = "UITest-\(UUID().uuidString.prefix(8))"
 
         settingsWindow.textFields["EndpointNameField"].click()
@@ -29,7 +32,9 @@ final class EndpointFormUITests: UITestCase {
     }
 
     func testSaveWithEmptyNameShowsValidationErrorAndDoesNotClose() {
-        let settingsWindow = openAddEndpointForm()
+        let app = Self.launchApp()
+        defer { app.terminate() }
+        let settingsWindow = openAddEndpointForm(in: app)
         settingsWindow.textFields["EndpointURLField"].click()
         settingsWindow.textFields["EndpointURLField"].typeText(Self.testURL)
         settingsWindow.buttons["Save"].click()
@@ -40,7 +45,9 @@ final class EndpointFormUITests: UITestCase {
     }
 
     func testCancelDiscardsEnteredDataAndReturnsToEmptyState() {
-        let settingsWindow = openAddEndpointForm()
+        let app = Self.launchApp()
+        defer { app.terminate() }
+        let settingsWindow = openAddEndpointForm(in: app)
         let name = "UITest-Cancelled-\(UUID().uuidString.prefix(8))"
         settingsWindow.textFields["EndpointNameField"].click()
         settingsWindow.textFields["EndpointNameField"].typeText(name)

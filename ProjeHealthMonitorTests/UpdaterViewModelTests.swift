@@ -19,26 +19,18 @@ private final class MockUpdateController: UpdateControlling {
 
 @MainActor
 final class UpdaterViewModelTests: XCTestCase {
-    private var controller: MockUpdateController!
-    private var viewModel: UpdaterViewModel!
-
-    override func setUp() {
-        super.setUp()
-        controller = MockUpdateController()
-        viewModel = UpdaterViewModel(controller: controller)
-    }
-
-    override func tearDown() {
-        controller = nil
-        viewModel = nil
-        super.tearDown()
+    private func makeSUT() -> (controller: MockUpdateController, viewModel: UpdaterViewModel) {
+        let controller = MockUpdateController()
+        return (controller, UpdaterViewModel(controller: controller))
     }
 
     func testCanCheckForUpdatesStartsFalse() {
+        let (_, viewModel) = makeSUT()
         XCTAssertFalse(viewModel.canCheckForUpdates)
     }
 
     func testCanCheckForUpdatesReflectsControllerPublisher() async {
+        let (controller, viewModel) = makeSUT()
         controller.canCheckForUpdatesSubject.send(true)
         await waitUntilMainQueueDrained()
         XCTAssertTrue(viewModel.canCheckForUpdates)
@@ -57,16 +49,19 @@ final class UpdaterViewModelTests: XCTestCase {
     }
 
     func testCheckForUpdatesDelegatesToController() {
+        let (controller, viewModel) = makeSUT()
         viewModel.checkForUpdates()
         XCTAssertEqual(controller.checkForUpdatesCallCount, 1)
     }
 
     func testAutomaticallyChecksForUpdatesReadsFromController() {
+        let (controller, viewModel) = makeSUT()
         controller.automaticallyChecksForUpdates = true
         XCTAssertTrue(viewModel.automaticallyChecksForUpdates)
     }
 
     func testAutomaticallyChecksForUpdatesWritesThroughToController() {
+        let (controller, viewModel) = makeSUT()
         viewModel.automaticallyChecksForUpdates = true
         XCTAssertTrue(controller.automaticallyChecksForUpdates)
     }

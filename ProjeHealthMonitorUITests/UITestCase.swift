@@ -4,17 +4,6 @@ import XCTest
 /// `UserDefaults` suite and scratch history/stats files instead of the real installed app's data
 /// (see `ProjeHealthMonitorApp.makeIsolatedStoresForUITesting`).
 class UITestCase: XCTestCase {
-    var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        continueAfterFailure = false
-        Self.clearSavedWindowState()
-        app = XCUIApplication()
-        app.launchArguments = ["-UITestMode"]
-        app.launch()
-    }
-
     /// macOS restores window state (e.g. a still-open Settings window) across launches of the
     /// same bundle identifier. Clearing it keeps every test starting from the same clean
     /// menu-bar-only state regardless of how the previous run ended.
@@ -24,17 +13,24 @@ class UITestCase: XCTestCase {
         try? FileManager.default.removeItem(at: savedStateURL)
     }
 
-    override func tearDownWithError() throws {
-        app.terminate()
-        app = nil
-        try super.tearDownWithError()
+    /// XCTest lifecycle hooks are nonisolated in Swift 6, while XCUITest APIs are main-actor
+    /// isolated. Each main-actor test launches and owns its own app instance instead of sharing
+    /// one through `setUp`/`tearDown`.
+    @MainActor
+    static func launchApp() -> XCUIApplication {
+        clearSavedWindowState()
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode"]
+        app.launch()
+        return app
     }
 
     /// The app has exactly one `NSStatusItem` (`MenuBarIconView`'s icon), so the first match is
     /// unambiguous — its accessibility label isn't reliably queryable by prefix through the
     /// status-item element itself.
     @discardableResult
-    func openPopover() -> XCUIElement {
+    @MainActor
+    static func openPopover(in app: XCUIApplication) -> XCUIElement {
         let statusItem = app.statusItems.firstMatch
         XCTAssertTrue(statusItem.waitForExistence(timeout: 5), "Menu bar status item never appeared")
 
@@ -53,8 +49,9 @@ class UITestCase: XCTestCase {
     }
 
     @discardableResult
-    func openSettingsWindow() -> XCUIElement {
-        openPopover()
+    @MainActor
+    static func openSettingsWindow(in app: XCUIApplication) -> XCUIElement {
+        openPopover(in: app)
         let settingsButton = app.buttons["Settings"]
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 5), "Settings button never appeared in the popover")
         settingsButton.click()
@@ -68,7 +65,8 @@ class UITestCase: XCTestCase {
     /// behind a "more toolbar items" popup button (itself nested one level under a "Navigation
     /// Tab Bar" menu item) rather than showing them individually — so switching tabs always goes
     /// through this menu, never a directly-clickable tab button.
-    func selectSettingsTab(_ title: String, in settingsWindow: XCUIElement) {
+    @MainActor
+    static func selectSettingsTab(_ title: String, in settingsWindow: XCUIElement, app: XCUIApplication) {
         let moreButton = settingsWindow.popUpButtons["more toolbar items"]
         XCTAssertTrue(moreButton.waitForExistence(timeout: 5), "\"more toolbar items\" popup never appeared")
         moreButton.click()
