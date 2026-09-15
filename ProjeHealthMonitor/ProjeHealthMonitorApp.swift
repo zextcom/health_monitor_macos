@@ -1,5 +1,20 @@
 import SwiftUI
 import AppKit
+import KeyboardShortcuts
+
+extension KeyboardShortcuts.Name {
+    static let openSettings = Self("openSettings")
+}
+
+/// `openWindow` is a SwiftUI environment action — there's no way to obtain one from plain
+/// AppKit/global-hotkey code that isn't part of the view hierarchy. `MenuBarIconView` is always
+/// instantiated at launch (see its own doc comment) and already reads `openWindow`, so its `.task`
+/// stashes it here once, giving `KeyboardShortcuts.onKeyUp` (registered before any view exists) a
+/// way to call it later.
+@MainActor
+enum HotkeyBridge {
+    static var openWindow: OpenWindowAction?
+}
 
 @MainActor
 func presentSettingsWindow(using openWindow: OpenWindowAction) {
@@ -43,6 +58,14 @@ struct ProjeHealthMonitorApp: App {
 
         notificationService.requestAuthorizationIfNeeded()
         healthCheckService.start()
+
+        // Toggling the MenuBarExtra popover itself from a global hotkey isn't possible with
+        // public API (open SwiftUI limitation, FB10185203) — this opens Settings instead, via
+        // the same presentSettingsWindow(using:) the popover's own buttons and onboarding use.
+        KeyboardShortcuts.onKeyUp(for: .openSettings) {
+            guard let openWindow = HotkeyBridge.openWindow else { return }
+            presentSettingsWindow(using: openWindow)
+        }
     }
 
     var body: some Scene {

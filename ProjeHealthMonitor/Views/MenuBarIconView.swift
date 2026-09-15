@@ -13,9 +13,12 @@ struct MenuBarIconView: View {
             .foregroundStyle(color)
             .accessibilityLabel("Health status: \(accessibilityDescription)")
             .task {
-                // The label is the one part of MenuBarExtra that's always instantiated at launch
-                // (the popover's content closure is lazy, built only once the user opens it), so
-                // this is the reliable place to open Settings once for a brand-new install —
+                // Always instantiated at launch (the popover's content closure is lazy, built
+                // only once the user opens it) — the reliable place to hand the global hotkey a
+                // way to open Settings later (see HotkeyBridge).
+                HotkeyBridge.openWindow = openWindow
+
+                // This is also the reliable place to open Settings once for a brand-new install —
                 // without it, a menu-bar-only (LSUIElement) app can be easy to lose track of after
                 // a fresh download, with no Dock icon or window to notice.
                 guard !endpointStore.hasCompletedOnboarding else { return }

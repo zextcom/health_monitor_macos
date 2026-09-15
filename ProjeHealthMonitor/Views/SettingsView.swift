@@ -2,6 +2,7 @@ import SwiftUI
 import ServiceManagement
 import AppKit
 import UniformTypeIdentifiers
+import KeyboardShortcuts
 
 struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
@@ -285,6 +286,15 @@ struct SettingsView: View {
                 }
             } header: {
                 Label("Startup", systemImage: "power")
+            }
+
+            Section {
+                KeyboardShortcuts.Recorder("Open Settings:", name: .openSettings)
+                Text("Opens Settings from anywhere — the popover itself can't be toggled from a global shortcut (a SwiftUI/MenuBarExtra limitation).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Label("Shortcuts", systemImage: "keyboard")
             }
         }
         .formStyle(.grouped)
