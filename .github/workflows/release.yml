@@ -174,9 +174,6 @@ jobs:
             "release-archives/$DMG_NAME"
           echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Staple DMG
-        run: xcrun stapler staple "release-archives/${{ steps.dmg.outputs.dmg_name }}"
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
