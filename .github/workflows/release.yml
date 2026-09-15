@@ -59,6 +59,15 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
           rm "$CERT_PATH"
 
+      # The iCloud key-value store entitlement is provisioning-profile-gated even under
+      # Developer ID (non-App-Store) signing, so a plain Manual-style build with just an
+      # identity isn't enough — xcodebuild needs to fetch/create a matching profile itself via
+      # the App Store Connect API (no interactive Apple ID login available on a CI runner).
+      - name: Write App Store Connect API key
+        env:
+          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: echo "$API_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
+
       - name: Build (Release, Developer ID signed)
         run: |
           xcodebuild \
@@ -66,6 +75,10 @@ jobs:
             -scheme ProjeHealthMonitor \
             -configuration Release \
             -derivedDataPath build \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8" \
+            -authenticationKeyID VBR3NDQ4H4 \
+            -authenticationKeyIssuerID b27895dd-3a15-45ff-8789-e9358970f6a0 \
             MARKETING_VERSION="${{ steps.version.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             build
@@ -96,11 +109,8 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       - name: Notarize app
-        env:
-          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
           KEY_PATH="$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
-          echo "$API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
 
           APP_PATH="build/Build/Products/Release/Health Mntr.app"
           SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"
