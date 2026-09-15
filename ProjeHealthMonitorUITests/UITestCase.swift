@@ -64,10 +64,17 @@ class UITestCase: XCTestCase {
     /// How a `TabView`'s toolbar tabs render varies by macOS version: older macOS (e.g. the
     /// macOS 14 CI runner) shows each tab as its own clickable toolbar button, while newer macOS
     /// (e.g. Tahoe's redesigned toolbar, seen locally) collapses them all behind a "more toolbar
-    /// items" popup button nested one level under a "Navigation Tab Bar" menu item. Try the
-    /// direct button first and fall back to the popup path so the same test works on both.
+    /// items" popup button nested one level under a "Navigation Tab Bar" menu item; the macOS 14
+    /// CI runner instead exposes them as `Tab` elements inside a `TabGroup` (a third, distinct
+    /// accessibility shape). Try each in turn so the same test works everywhere.
     @MainActor
     static func selectSettingsTab(_ title: String, in settingsWindow: XCUIElement, app: XCUIApplication) {
+        let tabElement = settingsWindow.tabs[title]
+        if tabElement.waitForExistence(timeout: 2) {
+            tabElement.click()
+            return
+        }
+
         let directTabButton = settingsWindow.buttons[title]
         if directTabButton.waitForExistence(timeout: 2) {
             directTabButton.click()
@@ -75,11 +82,8 @@ class UITestCase: XCTestCase {
         }
 
         let moreButton = settingsWindow.popUpButtons["more toolbar items"]
-        if !moreButton.waitForExistence(timeout: 5) {
-            print("DIAGNOSTIC_TREE:\n\(app.debugDescription)")
-        }
-        XCTAssertTrue(moreButton.exists,
-                      "Neither a direct \"\(title)\" tab button nor the \"more toolbar items\" popup appeared")
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 5),
+                      "None of a Tab element, a direct \"\(title)\" tab button, or the \"more toolbar items\" popup appeared")
         moreButton.click()
 
         let navigationTabBar = app.menuItems["Navigation Tab Bar"]
