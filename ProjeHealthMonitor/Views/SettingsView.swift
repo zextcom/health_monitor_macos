@@ -135,6 +135,12 @@ struct SettingsView: View {
                 } label: {
                     Label("Import…", systemImage: "square.and.arrow.down")
                 }
+                Button {
+                    exportStatusPage()
+                } label: {
+                    Label("Export Status Page…", systemImage: "globe")
+                }
+                .disabled(endpointStore.endpoints.isEmpty)
                 Spacer()
                 Button {
                     editingEndpoint = nil
@@ -214,6 +220,51 @@ struct SettingsView: View {
             endpointFileError = nil
         } catch {
             endpointFileError = "Couldn't import file: \(error.localizedDescription)"
+        }
+    }
+
+    /// Builds `EndpointStatusSummary`s from live store data — this is the store-touching glue that
+    /// `HealthCheckService.statusPageHTML`/`statusPageJSON` deliberately stay free of (same split
+    /// as `EndpointDetailView`, which reads `historyStore.results(for:)` directly rather than
+    /// pushing store access down into `HealthCheckService`).
+    private func statusSummaries() -> [HealthCheckService.EndpointStatusSummary] {
+        endpointStore.endpoints.map { endpoint in
+            let results = historyStore.results(for: endpoint.id)
+            return HealthCheckService.EndpointStatusSummary(
+                name: endpoint.name,
+                group: endpoint.group,
+                isHealthy: results.last?.isHealthy,
+                uptimePercentage: HealthCheckService.uptimePercentage(results: results),
+                lastCheckedAt: results.last?.timestamp,
+                isSnoozed: HealthCheckService.isSnoozed(endpoint)
+            )
+        }
+    }
+
+    /// Unlike `exportEndpoints()`/`importEndpoints()` above (one file each), this produces two
+    /// files — `status.html` + `status.json` — from a single click, so the user picks a
+    /// destination folder rather than a single file name.
+    private func exportStatusPage() {
+        let generatedAt = Date()
+        let summaries = statusSummaries()
+        let html = HealthCheckService.statusPageHTML(summaries: summaries, generatedAt: generatedAt)
+        let json = HealthCheckService.statusPageJSON(summaries: summaries, generatedAt: generatedAt)
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Export"
+        panel.message = "Choose a folder to export status.html and status.json into"
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+
+        do {
+            try Data(html.utf8).write(to: folderURL.appendingPathComponent("status.html"), options: .atomic)
+            try json.write(to: folderURL.appendingPathComponent("status.json"), options: .atomic)
+            endpointFileError = nil
+        } catch {
+            endpointFileError = "Couldn't export status page: \(error.localizedDescription)"
         }
     }
 

@@ -26,6 +26,21 @@ final class MockURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// Mirrors the shape `HealthCheckService.statusPageJSON` encodes (its own payload wrapper is
+/// private) so tests can decode and assert on the real output rather than reaching into internals.
+private struct StatusPageDecodedPayload: Decodable {
+    struct Endpoint: Decodable {
+        let name: String
+        let group: String?
+        let isHealthy: Bool?
+        let uptimePercentage: Double?
+        let lastCheckedAt: Date?
+        let isSnoozed: Bool
+    }
+    let generatedAt: Date
+    let endpoints: [Endpoint]
+}
+
 final class HealthCheckServiceTests: XCTestCase {
     private var session: URLSession!
 
@@ -493,6 +508,95 @@ final class HealthCheckServiceTests: XCTestCase {
         let csv = HealthCheckService.csv(for: [result], endpointName: "API")
         let dataRow = csv.split(separator: "\n").last!
         XCTAssertFalse(dataRow.contains("\""))
+    }
+
+    // MARK: - Status page export
+
+    private func makeSummary(
+        name: String = "API",
+        group: String? = nil,
+        isHealthy: Bool? = true,
+        uptimePercentage: Double? = 99.5,
+        lastCheckedAt: Date? = Date(timeIntervalSince1970: 0),
+        isSnoozed: Bool = false
+    ) -> HealthCheckService.EndpointStatusSummary {
+        HealthCheckService.EndpointStatusSummary(
+            name: name, group: group, isHealthy: isHealthy, uptimePercentage: uptimePercentage,
+            lastCheckedAt: lastCheckedAt, isSnoozed: isSnoozed)
+    }
+
+    func testStatusPageHTMLEscapesFreeTextFields() {
+        let summary = makeSummary(name: "<script>alert(1)</script> & \"Co\"", group: "R&D <ops>")
+        let html = HealthCheckService.statusPageHTML(summaries: [summary], generatedAt: Date(timeIntervalSince1970: 0))
+
+        XCTAssertFalse(html.contains("<script>alert(1)</script>"))
+        XCTAssertTrue(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"))
+        XCTAssertTrue(html.contains("&amp;"))
+        XCTAssertTrue(html.contains("&quot;Co&quot;"))
+        XCTAssertTrue(html.contains("R&amp;D &lt;ops&gt;"))
+    }
+
+    func testStatusPageHTMLSummaryLineReflectsHealthyCount() {
+        let summaries = [
+            makeSummary(name: "A", isHealthy: true),
+            makeSummary(name: "B", isHealthy: true),
+            makeSummary(name: "C", isHealthy: false),
+            makeSummary(name: "D", isHealthy: nil),
+        ]
+        let html = HealthCheckService.statusPageHTML(summaries: summaries, generatedAt: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(html.contains("2 of 4 endpoints healthy"))
+    }
+
+    func testStatusPageHTMLMarksSnoozedEndpoint() {
+        let summary = makeSummary(name: "Maintenance API", isSnoozed: true)
+        let html = HealthCheckService.statusPageHTML(summaries: [summary], generatedAt: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(html.contains("Snoozed"))
+    }
+
+    func testStatusPageHTMLRendersEndpointWithNoHistoryWithoutCrashing() {
+        let summary = makeSummary(name: "Never Checked", isHealthy: nil, uptimePercentage: nil, lastCheckedAt: nil)
+        let html = HealthCheckService.statusPageHTML(summaries: [summary], generatedAt: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(html.contains("Never Checked"))
+        XCTAssertTrue(html.contains("No data yet"))
+        XCTAssertTrue(html.contains("No uptime data"))
+        XCTAssertTrue(html.contains("Never checked"))
+    }
+
+    func testStatusPageHTMLHandlesEmptySummaryList() {
+        let html = HealthCheckService.statusPageHTML(summaries: [], generatedAt: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(html.contains("0 of 0 endpoints healthy"))
+    }
+
+    func testStatusPageJSONRoundTripsFields() throws {
+        let generatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let summaries = [
+            makeSummary(name: "API", group: "Production", isHealthy: true, uptimePercentage: 99.9,
+                        lastCheckedAt: Date(timeIntervalSince1970: 1_699_999_000), isSnoozed: false),
+            makeSummary(name: "Worker", group: nil, isHealthy: nil, uptimePercentage: nil,
+                        lastCheckedAt: nil, isSnoozed: true),
+        ]
+        let data = HealthCheckService.statusPageJSON(summaries: summaries, generatedAt: generatedAt)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(StatusPageDecodedPayload.self, from: data)
+
+        XCTAssertEqual(decoded.generatedAt.timeIntervalSince1970, generatedAt.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(decoded.endpoints.count, 2)
+
+        XCTAssertEqual(decoded.endpoints[0].name, "API")
+        XCTAssertEqual(decoded.endpoints[0].group, "Production")
+        XCTAssertEqual(decoded.endpoints[0].isHealthy, true)
+        XCTAssertEqual(decoded.endpoints[0].uptimePercentage ?? -1, 99.9, accuracy: 0.001)
+        XCTAssertNotNil(decoded.endpoints[0].lastCheckedAt)
+        XCTAssertEqual(decoded.endpoints[0].isSnoozed, false)
+
+        XCTAssertEqual(decoded.endpoints[1].name, "Worker")
+        XCTAssertNil(decoded.endpoints[1].group)
+        XCTAssertNil(decoded.endpoints[1].isHealthy)
+        XCTAssertNil(decoded.endpoints[1].uptimePercentage)
+        XCTAssertNil(decoded.endpoints[1].lastCheckedAt)
+        XCTAssertEqual(decoded.endpoints[1].isSnoozed, true)
     }
 
     // MARK: - TLS certificate expiry (pure threshold logic; the network fetch itself isn't mockable)
