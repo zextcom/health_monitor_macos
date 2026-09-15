@@ -61,14 +61,22 @@ class UITestCase: XCTestCase {
         return settingsWindow
     }
 
-    /// At the Settings window's fixed 480pt width, macOS collapses the `TabView`'s toolbar tabs
-    /// behind a "more toolbar items" popup button (itself nested one level under a "Navigation
-    /// Tab Bar" menu item) rather than showing them individually — so switching tabs always goes
-    /// through this menu, never a directly-clickable tab button.
+    /// How a `TabView`'s toolbar tabs render varies by macOS version: older macOS (e.g. the
+    /// macOS 14 CI runner) shows each tab as its own clickable toolbar button, while newer macOS
+    /// (e.g. Tahoe's redesigned toolbar, seen locally) collapses them all behind a "more toolbar
+    /// items" popup button nested one level under a "Navigation Tab Bar" menu item. Try the
+    /// direct button first and fall back to the popup path so the same test works on both.
     @MainActor
     static func selectSettingsTab(_ title: String, in settingsWindow: XCUIElement, app: XCUIApplication) {
+        let directTabButton = settingsWindow.buttons[title]
+        if directTabButton.waitForExistence(timeout: 2) {
+            directTabButton.click()
+            return
+        }
+
         let moreButton = settingsWindow.popUpButtons["more toolbar items"]
-        XCTAssertTrue(moreButton.waitForExistence(timeout: 5), "\"more toolbar items\" popup never appeared")
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 5),
+                      "Neither a direct \"\(title)\" tab button nor the \"more toolbar items\" popup appeared")
         moreButton.click()
 
         let navigationTabBar = app.menuItems["Navigation Tab Bar"]
