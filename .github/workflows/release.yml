@@ -70,6 +70,26 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             build
 
+      - name: Notarize app
+        env:
+          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
+          echo "$API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+
+          APP_PATH="build/Build/Products/Release/Health Mntr.app"
+          SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$SUBMISSION_ZIP"
+
+          xcrun notarytool submit "$SUBMISSION_ZIP" \
+            --key "$KEY_PATH" \
+            --key-id VBR3NDQ4H4 \
+            --issuer b27895dd-3a15-45ff-8789-e9358970f6a0 \
+            --wait
+
+          xcrun stapler staple "$APP_PATH"
+          rm "$KEY_PATH" "$SUBMISSION_ZIP"
+
       - name: Zip app
         id: zip
         run: |
@@ -113,6 +133,9 @@ jobs:
             -format UDZO \
             "release-archives/$DMG_NAME"
           echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Staple DMG
+        run: xcrun stapler staple "release-archives/${{ steps.dmg.outputs.dmg_name }}"
 
       - name: Create GitHub Release
         env:
