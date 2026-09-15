@@ -35,6 +35,20 @@
                ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AD20ADC105FED2DF5752012F"
+               BuildableName = "ProjeHealthMonitorUITests.xctest"
+               BlueprintName = "ProjeHealthMonitorUITests"
+               ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -54,12 +68,24 @@
       </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "2AC2A0E0F60553BC43BE0716"
                BuildableName = "ProjeHealthMonitorTests.xctest"
                BlueprintName = "ProjeHealthMonitorTests"
+               ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AD20ADC105FED2DF5752012F"
+               BuildableName = "ProjeHealthMonitorUITests.xctest"
+               BlueprintName = "ProjeHealthMonitorUITests"
                ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -646,7 +646,9 @@ final class HealthCheckService: ObservableObject {
 
     /// Opens a raw TLS connection (no HTTP request) to `host:port` and reads the leaf
     /// certificate's expiry date from the handshake. Returns `nil` on any failure or timeout.
-    nonisolated static func fetchCertificateExpiry(host: String, port: UInt16 = 443, timeout: TimeInterval = 10) async -> Date? {
+    nonisolated static func fetchCertificateExpiry(
+        host: String, port: UInt16 = 443, timeout: TimeInterval = 10, parameters: NWParameters = .tls
+    ) async -> Date? {
         await withCheckedContinuation { continuation in
             let resumer = CertFetchResumer(continuation: continuation)
 
@@ -654,7 +656,7 @@ final class HealthCheckService: ObservableObject {
                 resumer.resumeOnce(nil)
                 return
             }
-            let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tls)
+            let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: parameters)
             let queue = DispatchQueue(label: "com.zext.healthmonitor.cert-fetch")
 
             queue.asyncAfter(deadline: .now() + timeout) {
@@ -686,7 +688,7 @@ final class HealthCheckService: ObservableObject {
         }
     }
 
-    private nonisolated static func notAfterDate(from certificate: SecCertificate) -> Date? {
+    nonisolated static func notAfterDate(from certificate: SecCertificate) -> Date? {
         guard let values = SecCertificateCopyValues(certificate, [kSecOIDX509V1ValidityNotAfter] as CFArray, nil) as? [CFString: Any],
               let notAfterDict = values[kSecOIDX509V1ValidityNotAfter] as? [CFString: Any],
               let numberValue = notAfterDict[kSecPropertyKeyValue] as? NSNumber

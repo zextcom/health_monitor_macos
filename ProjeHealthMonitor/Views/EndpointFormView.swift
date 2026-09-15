@@ -79,6 +79,7 @@ struct EndpointFormView: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
+                        .accessibilityIdentifier("EndpointNameField")
                     groupField
                     Picker("Check Type", selection: $checkType) {
                         ForEach(CheckType.allCases) { type in
@@ -87,6 +88,7 @@ struct EndpointFormView: View {
                     }
                     TextField(checkType == .tcp ? "Host:Port" : "URL", text: $urlString,
                               prompt: Text(checkType == .tcp ? "tcp://db.example.com:5432" : "https://api.example.com/health"))
+                        .accessibilityIdentifier("EndpointURLField")
                     retainedMatchBanner
                     if checkType == .http {
                         TextField("Expected HTTP status code", text: $expectedStatusCode)

@@ -39,9 +39,16 @@ struct ProjeHealthMonitorApp: App {
     @StateObject private var updaterViewModel: UpdaterViewModel
 
     init() {
-        let endpointStore = EndpointStore()
-        let historyStore = HealthHistoryStore()
-        let dailyStatsStore = DailyStatsStore()
+        let endpointStore: EndpointStore
+        let historyStore: HealthHistoryStore
+        let dailyStatsStore: DailyStatsStore
+        if let isolatedStores = Self.makeIsolatedStoresForUITesting() {
+            (endpointStore, historyStore, dailyStatsStore) = isolatedStores
+        } else {
+            endpointStore = EndpointStore()
+            historyStore = HealthHistoryStore()
+            dailyStatsStore = DailyStatsStore()
+        }
         let notificationService = NotificationService()
         let healthCheckService = HealthCheckService(
             endpointStore: endpointStore,
@@ -66,6 +73,21 @@ struct ProjeHealthMonitorApp: App {
             guard let openWindow = HotkeyBridge.openWindow else { return }
             presentSettingsWindow(using: openWindow)
         }
+    }
+
+    /// UI tests pass `-UITestMode` so each run gets its own throwaway `UserDefaults` suite and
+    /// history/stats files, rather than reading and writing the real installed app's data.
+    private static func makeIsolatedStoresForUITesting() -> (EndpointStore, HealthHistoryStore, DailyStatsStore)? {
+        guard ProcessInfo.processInfo.arguments.contains("-UITestMode") else { return nil }
+        let runID = UUID().uuidString
+        let defaults = UserDefaults(suiteName: "UITests.\(runID)") ?? .standard
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("UITests-\(runID)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        return (
+            EndpointStore(defaults: defaults),
+            HealthHistoryStore(fileURL: tempDirectory.appendingPathComponent("history.json")),
+            DailyStatsStore(fileURL: tempDirectory.appendingPathComponent("dailyStats.json"))
+        )
     }
 
     var body: some Scene {

@@ -74,15 +74,30 @@ targets:
     dependencies:
       - target: ProjeHealthMonitor
 
+  ProjeHealthMonitorUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: ProjeHealthMonitorUITests
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: true
+    dependencies:
+      - target: ProjeHealthMonitor
+
 schemes:
   ProjeHealthMonitor:
     build:
       targets:
         ProjeHealthMonitor: all
         ProjeHealthMonitorTests: [test]
+        ProjeHealthMonitorUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - ProjeHealthMonitorTests
+        - ProjeHealthMonitorUITests

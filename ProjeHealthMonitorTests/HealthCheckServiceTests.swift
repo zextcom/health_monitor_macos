@@ -1,5 +1,6 @@
 import XCTest
 import Network
+import Security
 @testable import ProjeHealthMonitor
 
 final class MockURLProtocol: URLProtocol {
@@ -656,14 +657,13 @@ final class HealthCheckServiceTests: XCTestCase {
         XCTAssertFalse(HealthCheckService.isSnoozed(endpoint, now: now))
     }
 
-    func testFetchCertificateExpiryAgainstRealHost() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_NETWORK_TESTS"] != nil,
-                           "Skips by default — hits a real host. Set RUN_NETWORK_TESTS=1 to run.")
-        let expiry = await HealthCheckService.fetchCertificateExpiry(host: "apple.com")
-        XCTAssertNotNil(expiry)
-        if let expiry {
-            XCTAssertGreaterThan(expiry, Date())
-        }
+    func testNotAfterDateParsesKnownCertificateExpiry() throws {
+        let derData = Data(base64Encoded: CertificateFixtures.leafCertificateDERBase64.replacingOccurrences(of: "\n", with: ""))!
+        let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, derData as CFData))
+        let expiry = try XCTUnwrap(HealthCheckService.notAfterDate(from: certificate))
+        XCTAssertEqual(expiry.timeIntervalSince1970,
+                        CertificateFixtures.leafCertificateExpiry.timeIntervalSince1970,
+                        accuracy: 2)
     }
 
     // MARK: - Auth headers
