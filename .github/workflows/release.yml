@@ -70,6 +70,31 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             build
 
+      # Xcode's build only re-signs the Sparkle.framework binary itself when embedding it (and
+      # without a secure timestamp); the deeper nested executables it ships — Autoupdate,
+      # Updater.app, and the two XPC services — are copied verbatim from Sparkle's own SPM
+      # release artifact, still carrying Sparkle's own signature. Notarization rejects all of
+      # that, so re-sign everything bottom-up with our own identity before submitting, then
+      # re-sign the outer app bundle last since its signature covers everything inside it.
+      - name: Re-sign Sparkle's bundled binaries
+        run: |
+          APP_PATH="build/Build/Products/Release/Health Mntr.app"
+          SPARKLE_VERSIONED="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+          IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          echo "Using signing identity: $IDENTITY"
+
+          SIGN_ARGS=(--force --options runtime --timestamp --sign "$IDENTITY")
+          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Downloader.xpc"
+          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Installer.xpc"
+          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Autoupdate"
+          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Updater.app"
+          codesign "${SIGN_ARGS[@]}" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
+          codesign --force --options runtime --timestamp \
+            --entitlements ProjeHealthMonitor/ProjeHealthMonitor.entitlements \
+            --sign "$IDENTITY" "$APP_PATH"
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
       - name: Notarize app
         env:
           API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
