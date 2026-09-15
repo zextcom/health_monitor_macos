@@ -409,6 +409,185 @@ final class HealthCheckService: ObservableObject {
         return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
+    // MARK: - Public status page export
+
+    /// Point-in-time snapshot of one endpoint's health, already resolved by the caller from
+    /// `HealthHistoryStore`/`Endpoint` (mirrors `csv(for:endpointName:)`'s pattern of taking
+    /// already-fetched data rather than this type touching stores/UserDefaults itself).
+    /// `isHealthy`/`uptimePercentage` are `nil` when there's no history yet, matching
+    /// `uptimePercentage(results:)`'s own nil-for-empty-history convention.
+    struct EndpointStatusSummary: Codable, Equatable {
+        let name: String
+        let group: String?
+        let isHealthy: Bool?
+        let uptimePercentage: Double?
+        let lastCheckedAt: Date?
+        let isSnoozed: Bool
+    }
+
+    private struct StatusPagePayload: Codable {
+        let generatedAt: Date
+        let endpoints: [EndpointStatusSummary]
+    }
+
+    /// Builds a single, self-contained HTML status page — all CSS inline, no external
+    /// stylesheets/fonts/scripts/images — so it can be dropped onto any static host (GitHub Pages,
+    /// S3, etc.) as-is, alongside the sibling JSON from `statusPageJSON`. `name`/`group` are
+    /// user-entered free text, so they're HTML-escaped the same way `csv(for:)` escapes
+    /// `failureReason` for CSV.
+    nonisolated static func statusPageHTML(summaries: [EndpointStatusSummary], generatedAt: Date) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+
+        let healthyCount = summaries.filter { $0.isHealthy == true }.count
+        let summaryLine = "\(healthyCount) of \(summaries.count) endpoint\(summaries.count == 1 ? "" : "s") healthy"
+        let rows = summaries.isEmpty
+            ? "<p class=\"empty\">No endpoints configured.</p>"
+            : summaries.map { statusRowHTML(for: $0, dateFormatter: dateFormatter) }.joined(separator: "\n")
+        let generatedAtText = dateFormatter.string(from: generatedAt)
+
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Endpoint Status</title>
+        <style>
+        :root {
+          color-scheme: light dark;
+          --bg: #f5f5f7;
+          --card-bg: #ffffff;
+          --text: #1d1d1f;
+          --text-secondary: #6e6e73;
+          --border: #d2d2d7;
+          --green: #34c759;
+          --red: #ff3b30;
+          --gray: #8e8e93;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --bg: #000000;
+            --card-bg: #1c1c1e;
+            --text: #f5f5f7;
+            --text-secondary: #98989d;
+            --border: #38383a;
+          }
+        }
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          padding: 32px 16px;
+          background: var(--bg);
+          color: var(--text);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .container { max-width: 720px; margin: 0 auto; }
+        h1 { font-size: 1.4rem; margin: 0 0 6px; }
+        .summary { font-size: 1rem; color: var(--text-secondary); margin: 0 0 24px; }
+        .empty { color: var(--text-secondary); }
+        .endpoint {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px 16px;
+          background: var(--card-bg);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .dot.healthy { background: var(--green); }
+        .dot.down { background: var(--red); }
+        .dot.unknown { background: var(--gray); }
+        .name-block { flex: 1 1 200px; min-width: 0; }
+        .name { font-weight: 600; }
+        .group { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+        .snoozed-badge {
+          font-size: 0.7rem;
+          padding: 2px 8px;
+          margin-left: 6px;
+          border-radius: 10px;
+          background: var(--border);
+          color: var(--text-secondary);
+          white-space: nowrap;
+        }
+        .meta { font-size: 0.85rem; color: var(--text-secondary); text-align: right; }
+        footer { margin-top: 24px; font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
+        @media (max-width: 480px) {
+          .endpoint { flex-direction: column; align-items: flex-start; }
+          .meta { text-align: left; }
+        }
+        </style>
+        </head>
+        <body>
+        <div class="container">
+        <h1>Endpoint Status</h1>
+        <p class="summary">\(htmlEscape(summaryLine))</p>
+        <div class="endpoints">
+        \(rows)
+        </div>
+        <footer>Generated at \(htmlEscape(generatedAtText))</footer>
+        </div>
+        </body>
+        </html>
+        """
+    }
+
+    private nonisolated static func statusRowHTML(for summary: EndpointStatusSummary, dateFormatter: DateFormatter) -> String {
+        let statusClass: String
+        let statusLabel: String
+        switch summary.isHealthy {
+        case .some(true): statusClass = "healthy"; statusLabel = "Healthy"
+        case .some(false): statusClass = "down"; statusLabel = "Down"
+        case .none: statusClass = "unknown"; statusLabel = "No data yet"
+        }
+
+        let uptimeText = summary.uptimePercentage.map { String(format: "%.1f%% uptime", $0) } ?? "No uptime data"
+        let lastCheckedText = summary.lastCheckedAt.map { dateFormatter.string(from: $0) } ?? "Never checked"
+        let groupHTML = summary.group.map { "<div class=\"group\">\(htmlEscape($0))</div>" } ?? ""
+        let snoozedHTML = summary.isSnoozed ? "<span class=\"snoozed-badge\">Snoozed</span>" : ""
+
+        return """
+        <div class="endpoint">
+          <span class="dot \(statusClass)" title="\(htmlEscape(statusLabel))"></span>
+          <div class="name-block">
+            <div class="name">\(htmlEscape(summary.name))\(snoozedHTML)</div>
+            \(groupHTML)
+          </div>
+          <div class="meta">
+            <div>\(htmlEscape(statusLabel)) · \(htmlEscape(uptimeText))</div>
+            <div>Last checked: \(htmlEscape(lastCheckedText))</div>
+          </div>
+        </div>
+        """
+    }
+
+    /// Minimal HTML entity escaping for user-entered free text (endpoint name/group) — no existing
+    /// helper for this in the codebase (unlike `csvEscape` for CSV), so this is the HTML equivalent.
+    /// Order matters: `&` must be escaped first so it doesn't double-escape the entities below.
+    private nonisolated static func htmlEscape(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    /// JSON sibling of `statusPageHTML` — the same summaries, machine-readable, as a top-level
+    /// object with `generatedAt` plus an `endpoints` array (camelCase, ISO8601 dates via
+    /// `JSONEncoder`, no hand-built string like the HTML above needs).
+    nonisolated static func statusPageJSON(summaries: [EndpointStatusSummary], generatedAt: Date) -> Data {
+        let payload = StatusPagePayload(generatedAt: generatedAt, endpoints: summaries)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return (try? encoder.encode(payload)) ?? Data("{}".utf8)
+    }
+
     struct FlattenedJSONField: Identifiable {
         var id: String { path }
         let path: String
