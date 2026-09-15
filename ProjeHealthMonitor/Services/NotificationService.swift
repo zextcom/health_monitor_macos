@@ -3,7 +3,7 @@ import UserNotifications
 
 /// Narrow seam over `UNUserNotificationCenter` — exposes only what `NotificationService` needs,
 /// so tests can substitute a fake instead of touching the real system notification center.
-protocol UserNotificationCentering: Sendable {
+protocol UserNotificationCentering {
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     func add(_ request: UNNotificationRequest) async throws
@@ -15,8 +15,11 @@ extension UNUserNotificationCenter: UserNotificationCentering {
     }
 }
 
-/// Stateless wrapper around UNUserNotificationCenter — no actor affinity needed.
-final class NotificationService: Sendable {
+/// Stateless wrapper around UNUserNotificationCenter — no actor affinity needed. `center` is
+/// either the real `UNUserNotificationCenter.current()` singleton (an OS service, safe to share
+/// across threads) or a test fake used only within a single test; `@unchecked` sidesteps needing
+/// `UNUserNotificationCenter` itself to prove `Sendable`, which varies across SDK versions.
+final class NotificationService: @unchecked Sendable {
     private let center: UserNotificationCentering
 
     init(center: UserNotificationCentering = UNUserNotificationCenter.current()) {
