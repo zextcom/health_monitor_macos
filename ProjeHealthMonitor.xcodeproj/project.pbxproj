@@ -583,6 +583,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.zext.healthmonitor;
 				PRODUCT_MODULE_NAME = ProjeHealthMonitor;
 				PRODUCT_NAME = "Health Mntr";
+				PROVISIONING_PROFILE_SPECIFIER = "Health Monitor Developer ID";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};

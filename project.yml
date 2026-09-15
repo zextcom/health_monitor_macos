@@ -49,9 +49,16 @@ targets:
           # builds — this is what CI's release workflow builds and notarizes. Sparkle's own XPC
           # services are signed with Sparkle's certificate, not ours, hence
           # com.apple.security.cs.disable-library-validation in the entitlements file.
+          #
+          # The iCloud key-value store entitlement is provisioning-profile-gated even under
+          # Developer ID signing, so an explicit profile is required — Xcode won't auto-fetch
+          # one under Manual style, even with -allowProvisioningUpdates (that only helps
+          # Automatic). release.yml installs this exact profile (name below) from the
+          # DEVELOPER_ID_PROVISIONING_PROFILE secret before building.
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Developer ID Application"
           DEVELOPMENT_TEAM: 4MSY72K4VX
+          PROVISIONING_PROFILE_SPECIFIER: "Health Monitor Developer ID"
           CODE_SIGN_ENTITLEMENTS: ProjeHealthMonitor/ProjeHealthMonitor.entitlements
           ENABLE_HARDENED_RUNTIME: true
     dependencies:
