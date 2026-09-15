@@ -81,11 +81,26 @@ jobs:
           SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"
           ditto -c -k --keepParent "$APP_PATH" "$SUBMISSION_ZIP"
 
-          xcrun notarytool submit "$SUBMISSION_ZIP" \
+          set +e
+          NOTARIZE_OUTPUT=$(xcrun notarytool submit "$SUBMISSION_ZIP" \
             --key "$KEY_PATH" \
             --key-id VBR3NDQ4H4 \
             --issuer b27895dd-3a15-45ff-8789-e9358970f6a0 \
-            --wait
+            --wait 2>&1)
+          NOTARIZE_STATUS=$?
+          echo "$NOTARIZE_OUTPUT"
+          set -e
+
+          SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep -m1 '^  id:' | awk '{print $2}')
+          if [ $NOTARIZE_STATUS -ne 0 ] || echo "$NOTARIZE_OUTPUT" | grep -q "status: Invalid"; then
+            echo "Notarization failed or was rejected — fetching the detailed log:"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$KEY_PATH" \
+              --key-id VBR3NDQ4H4 \
+              --issuer b27895dd-3a15-45ff-8789-e9358970f6a0
+            rm "$KEY_PATH" "$SUBMISSION_ZIP"
+            exit 1
+          fi
 
           xcrun stapler staple "$APP_PATH"
           rm "$KEY_PATH" "$SUBMISSION_ZIP"
