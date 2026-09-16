@@ -4,3 +4,9 @@ xcuserdata/
 DerivedData/
 build/
 ROADMAP.local.md
+
+# Node.js / Backend
+node_modules/
+dist/
+.env
+*.tsbuildinfo

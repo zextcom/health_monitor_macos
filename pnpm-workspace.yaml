@@ -1,0 +1,8 @@
+packages:
+  - 'backend'
+  - 'packages/*'
+
+allowBuilds:
+  bcrypt: true
+  esbuild: true
+  msgpackr-extract: true

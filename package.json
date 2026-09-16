@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @health-monitor/backend dev",
+    "build": "pnpm --filter @health-monitor/backend build",
+    "db:generate": "pnpm --filter @health-monitor/backend db:generate",
+    "db:migrate": "pnpm --filter @health-monitor/backend db:migrate",
+    "db:studio": "pnpm --filter @health-monitor/backend db:studio"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
