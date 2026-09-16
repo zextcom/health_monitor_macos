@@ -10,6 +10,8 @@ import { endpointRoutes } from './modules/endpoints/endpoints.routes.js';
 import { checkRoutes } from './modules/checks/checks.routes.js';
 import { sseRoutes } from './modules/sse/sse.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
+import { notificationRoutes } from './modules/notifications/notification.routes.js';
+import { retentionRoutes } from './modules/retention/retention.routes.js';
 import { startSSESubscriber } from './modules/sse/sse-bus.js';
 
 export async function buildApp() {
@@ -30,6 +32,8 @@ export async function buildApp() {
   await app.register(checkRoutes);
   await app.register(sseRoutes);
   await app.register(dashboardRoutes, { prefix: '/dashboard' });
+  await app.register(retentionRoutes, { prefix: '/admin' });
+  await app.register(notificationRoutes, { prefix: '/notifications' });
 
   app.get('/health', async () => ({ status: 'ok' }));
 

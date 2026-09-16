@@ -16,6 +16,7 @@ import {
 import type { Endpoint, JsonAssertion } from '../../db/schema.js';
 import { decrypt } from '../../utils/crypto.js';
 import { REDIS_CHANNEL, type CheckResultEvent } from '../sse/sse-bus.js';
+import { notifyEndpointDown, notifyEndpointRecovered } from '../notifications/notification.service.js';
 
 export const QUEUE_NAME = 'health-checks';
 
@@ -293,11 +294,13 @@ async function updateDailyStats(
     });
 }
 
+type IncidentAction = 'opened' | 'closed' | 'none';
+
 async function manageIncidents(
   endpointId: string,
   isHealthy: boolean,
   failureReason: string | null,
-): Promise<void> {
+): Promise<IncidentAction> {
   const ongoing = await db.query.incidents.findFirst({
     where: and(eq(incidents.endpointId, endpointId), eq(incidents.isOngoing, true)),
   });
@@ -310,8 +313,9 @@ async function manageIncidents(
         isOngoing: true,
         failureReason,
       });
+      return 'opened';
     }
-    return;
+    return 'none';
   }
 
   if (ongoing) {
@@ -319,7 +323,10 @@ async function manageIncidents(
       .update(incidents)
       .set({ endedAt: new Date(), isOngoing: false })
       .where(eq(incidents.id, ongoing.id));
+    return 'closed';
   }
+
+  return 'none';
 }
 
 async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
@@ -367,7 +374,13 @@ async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
     await publisher.publish(REDIS_CHANNEL, JSON.stringify(sseEvent));
 
     await updateDailyStats(endpointId, outcome.isHealthy, endpoint.checkInterval);
-    await manageIncidents(endpointId, outcome.isHealthy, outcome.failureReason);
+
+    const incidentAction = await manageIncidents(endpointId, outcome.isHealthy, outcome.failureReason);
+    if (incidentAction === 'opened') {
+      await notifyEndpointDown(endpointId, outcome.failureReason);
+    } else if (incidentAction === 'closed') {
+      await notifyEndpointRecovered(endpointId);
+    }
   } catch (error) {
     console.error(`Health check processing failed for endpoint ${endpointId}:`, error);
   }
