@@ -1,0 +1,34 @@
+# This is the file Docker actually reads when the build context is the repo
+# root (e.g. `docker build -f backend/Dockerfile .`, or the `build.context: .`
+# used by docker-compose.prod.yml). backend/.dockerignore alone would NOT be
+# picked up for that invocation, so the real excludes for backend/node_modules
+# (which contains macOS-built native addons that must never overwrite the
+# Linux ones built inside the image), dist/, .env, and other non-source
+# content live here too.
+
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/coverage
+.env
+.env.*
+!.env.example
+!.env.production.example
+.git
+.github
+.DS_Store
+*.log
+
+backend/test
+backend/package-lock.json
+
+# macOS app — irrelevant to the backend image
+ProjeHealthMonitor/
+ProjeHealthMonitor.xcodeproj/
+ProjeHealthMonitorTests/
+ProjeHealthMonitorUITests/
+
+# Not needed inside the backend build context
+nginx/
+README.md
+LICENSE
