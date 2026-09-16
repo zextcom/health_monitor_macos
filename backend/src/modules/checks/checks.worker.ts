@@ -43,7 +43,7 @@ const checkQueue = new Queue<CheckJobData>(QUEUE_NAME, { connection });
 
 let worker: Worker<CheckJobData> | undefined;
 
-function buildAuthHeaders(endpoint: Endpoint, secret: string | null): Record<string, string> {
+export function buildAuthHeaders(endpoint: Endpoint, secret: string | null): Record<string, string> {
   if (!secret) {
     return {};
   }
@@ -62,7 +62,7 @@ function buildAuthHeaders(endpoint: Endpoint, secret: string | null): Record<str
   }
 }
 
-function getByPath(obj: unknown, path: string): unknown {
+export function getByPath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((acc, key) => {
     if (acc && typeof acc === 'object' && key in (acc as Record<string, unknown>)) {
       return (acc as Record<string, unknown>)[key];
@@ -71,7 +71,7 @@ function getByPath(obj: unknown, path: string): unknown {
   }, obj);
 }
 
-function matchesAssertion(
+export function matchesAssertion(
   value: unknown,
   expectedValue: string,
   matchMode: JsonAssertion['matchMode'],
@@ -266,7 +266,7 @@ async function runCheck(endpoint: Endpoint, secret: string | null): Promise<Chec
   return performHttpCheck(endpoint, secret);
 }
 
-async function updateDailyStats(
+export async function updateDailyStats(
   endpointId: string,
   isHealthy: boolean,
   checkInterval: number,
@@ -296,7 +296,7 @@ async function updateDailyStats(
 
 type IncidentAction = 'opened' | 'closed' | 'none';
 
-async function manageIncidents(
+export async function manageIncidents(
   endpointId: string,
   isHealthy: boolean,
   failureReason: string | null,
