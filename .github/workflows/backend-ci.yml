@@ -1,0 +1,94 @@
+name: Backend CI
+
+# NOTE: named/filed separately from the existing .github/workflows/ci.yml,
+# which builds and tests the macOS (Swift) app. This workflow only covers
+# the backend/ (Fastify + TypeScript) package.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint-and-typecheck:
+    name: Backend Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cd backend && pnpm run build # tsc — type checks and builds
+
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: healthmonitor
+          POSTGRES_PASSWORD: healthmonitor_test
+          POSTGRES_DB: healthmonitor_test
+        options: >-
+          --health-cmd "pg_isready -U healthmonitor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgres://healthmonitor:healthmonitor_test@localhost:5432/healthmonitor_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-secret-not-for-production
+      JWT_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+      ENCRYPTION_KEY: '12345678901234567890123456789012'
+      PORT: 3000
+      HOST: 0.0.0.0
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run database migrations
+        run: cd backend && npx drizzle-kit migrate
+      - name: Run tests
+        run: cd backend && pnpm test
+
+  # Optional: Docker build validation
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    # Only run on pushes to main, not on PRs (saves CI minutes)
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: |
+          if [ -f backend/Dockerfile ]; then
+            docker build -f backend/Dockerfile -t health-monitor-backend:ci .
+          else
+            echo "No Dockerfile found, skipping"
+          fi
