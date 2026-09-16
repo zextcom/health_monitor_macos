@@ -59,23 +59,6 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
           rm "$CERT_PATH"
 
-      - name: Write App Store Connect API key
-        env:
-          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-        run: echo "$API_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
-
-      # The iCloud key-value store entitlement is provisioning-profile-gated even under
-      # Developer ID (non-App-Store) signing. -allowProvisioningUpdates only helps Automatic
-      # signing style, so under Manual we install a real "Developer ID" distribution profile
-      # (created once in the portal, not device-locked) at the path Xcode scans for profiles.
-      - name: Install Developer ID provisioning profile
-        env:
-          PROFILE_BASE64: ${{ secrets.DEVELOPER_ID_PROVISIONING_PROFILE }}
-        run: |
-          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROFILES_DIR"
-          echo "$PROFILE_BASE64" | base64 --decode > "$PROFILES_DIR/HealthMonitorDeveloperID.provisionprofile"
-
       - name: Build (Release, Developer ID signed)
         run: |
           xcodebuild \
@@ -113,8 +96,11 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       - name: Notarize app
+        env:
+          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
           KEY_PATH="$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
+          echo "$API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
 
           APP_PATH="build/Build/Products/Release/Health Mntr.app"
           SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"

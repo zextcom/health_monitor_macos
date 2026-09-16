@@ -1,15 +1,5 @@
 import Foundation
 
-/// Narrow seam over `NSUbiquitousKeyValueStore` — exposes only what `EndpointStore` needs, so
-/// tests can substitute a fake instead of depending on a real (network-backed,
-/// iCloud-account-dependent) key-value store.
-protocol UbiquitousKeyValueStoring: AnyObject {
-    func data(forKey key: String) -> Data?
-    func set(_ value: Data?, forKey key: String)
-}
-
-extension NSUbiquitousKeyValueStore: UbiquitousKeyValueStoring {}
-
 @MainActor
 final class EndpointStore: ObservableObject {
     /// Days a retained-deleted endpoint's history/stats survive before being purged if never
@@ -29,17 +19,6 @@ final class EndpointStore: ObservableObject {
         static let requestTimeout = "requestTimeout"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let historyRetentionDays = "historyRetentionDays"
-        static let iCloudSyncEnabled = "iCloudSyncEnabled"
-        static let lastSyncedModifiedAt = "lastSyncedModifiedAt"
-    }
-
-    /// Key inside the iCloud key-value store (not a `UserDefaults` key) — namespaced since the
-    /// store is shared across every app the user has opted into this same iCloud account for.
-    private static let ubiquitousSyncKey = "com.zext.healthmonitor.endpointsSync"
-
-    private struct SyncPayload: Codable {
-        let endpoints: [Endpoint]
-        let modifiedAt: Date
     }
 
     @Published var endpoints: [Endpoint] {
@@ -74,34 +53,15 @@ final class EndpointStore: ObservableObject {
     @Published var hasCompletedOnboarding: Bool {
         didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
-    /// Opt-in: mirrors `endpoints` through iCloud's key-value store so the same list can be used
-    /// across the user's own Macs. Off by default — enabling it for the first time pulls down
-    /// whatever's already synced (if newer) before pushing the local list up.
-    @Published var iCloudSyncEnabled: Bool {
-        didSet {
-            defaults.set(iCloudSyncEnabled, forKey: Keys.iCloudSyncEnabled)
-            guard iCloudSyncEnabled, !isLoading else { return }
-            applyRemoteSyncPayloadIfNewer()
-            pushEndpointsToICloud()
-        }
-    }
 
     private let defaults: UserDefaults
-    private let ubiquitousStore: UbiquitousKeyValueStoring
-    /// `nonisolated(unsafe)`: only ever mutated on the main actor (assigned once, at the end of
-    /// `init`), but `deinit` itself runs nonisolated, and `NSObjectProtocol` isn't `Sendable`.
-    nonisolated(unsafe) private var ubiquitousStoreObserver: NSObjectProtocol?
-    /// Guards `pushEndpointsToICloud()` from re-pushing a payload we just pulled down — without
-    /// this, two synced Macs would keep re-triggering each other's external-change notification.
-    private var isApplyingRemoteSyncPayload = false
     /// Guards `persistEndpoints()` from running as a side effect of the `didSet` firing during
     /// `init`'s own assignment — without this, a decode failure on existing data would
     /// immediately overwrite it on disk with an empty array before we ever hand control back.
     private var isLoading = true
 
-    init(defaults: UserDefaults = .standard, ubiquitousStore: UbiquitousKeyValueStoring = NSUbiquitousKeyValueStore.default) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.ubiquitousStore = ubiquitousStore
 
         if let data = defaults.data(forKey: Keys.endpoints),
            let decoded = try? JSONDecoder().decode([Endpoint].self, from: data) {
@@ -131,28 +91,8 @@ final class EndpointStore: ObservableObject {
         self.historyRetentionDays = storedRetentionDays > 0 ? storedRetentionDays : 7
 
         self.hasCompletedOnboarding = defaults.object(forKey: Keys.hasCompletedOnboarding) as? Bool ?? false
-        self.iCloudSyncEnabled = defaults.object(forKey: Keys.iCloudSyncEnabled) as? Bool ?? false
 
         isLoading = false
-
-        if self.iCloudSyncEnabled {
-            applyRemoteSyncPayloadIfNewer()
-        }
-        ubiquitousStoreObserver = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: NSUbiquitousKeyValueStore.default,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.applyRemoteSyncPayloadIfNewer()
-            }
-        }
-    }
-
-    deinit {
-        if let ubiquitousStoreObserver {
-            NotificationCenter.default.removeObserver(ubiquitousStoreObserver)
-        }
     }
 
     func addEndpoint(_ endpoint: Endpoint) {
@@ -232,40 +172,11 @@ final class EndpointStore: ObservableObject {
         guard !isLoading else { return }
         guard let data = try? JSONEncoder().encode(endpoints) else { return }
         defaults.set(data, forKey: Keys.endpoints)
-        pushEndpointsToICloud()
     }
 
     private func persistRetainedEndpoints() {
         guard !isLoading else { return }
         guard let data = try? JSONEncoder().encode(retainedDeletedEndpoints) else { return }
         defaults.set(data, forKey: Keys.retainedDeletedEndpoints)
-    }
-
-    // MARK: - iCloud sync
-
-    private func pushEndpointsToICloud() {
-        guard iCloudSyncEnabled, !isApplyingRemoteSyncPayload else { return }
-        let payload = SyncPayload(endpoints: endpoints, modifiedAt: Date())
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        ubiquitousStore.set(data, forKey: Self.ubiquitousSyncKey)
-        defaults.set(payload.modifiedAt, forKey: Keys.lastSyncedModifiedAt)
-    }
-
-    /// Applies the remote endpoint list only if it's newer than the last payload we pushed or
-    /// applied — `nil` (never synced before on this Mac) counts as "always apply", so enabling
-    /// sync for the first time on a second Mac pulls down whatever the first Mac already pushed.
-    func applyRemoteSyncPayloadIfNewer() {
-        guard iCloudSyncEnabled else { return }
-        guard let data = ubiquitousStore.data(forKey: Self.ubiquitousSyncKey),
-              let payload = try? JSONDecoder().decode(SyncPayload.self, from: data)
-        else { return }
-
-        let lastKnown = defaults.object(forKey: Keys.lastSyncedModifiedAt) as? Date
-        guard lastKnown == nil || payload.modifiedAt > lastKnown! else { return }
-
-        isApplyingRemoteSyncPayload = true
-        endpoints = payload.endpoints
-        isApplyingRemoteSyncPayload = false
-        defaults.set(payload.modifiedAt, forKey: Keys.lastSyncedModifiedAt)
     }
 }
