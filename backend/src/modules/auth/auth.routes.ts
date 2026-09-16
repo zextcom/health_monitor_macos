@@ -34,7 +34,7 @@ function handleServiceError(reply: FastifyReply, error: unknown) {
 }
 
 export async function authRoutes(fastify: FastifyInstance) {
-  fastify.post('/register', async (request, reply) => {
+  fastify.post('/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
@@ -48,7 +48,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/login', async (request, reply) => {
+  fastify.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
