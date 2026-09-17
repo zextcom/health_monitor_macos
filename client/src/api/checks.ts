@@ -43,21 +43,21 @@ export function getCheckHistory(
   if (params.limit !== undefined) query.set('limit', String(params.limit));
   if (params.offset !== undefined) query.set('offset', String(params.offset));
   const qs = query.toString();
-  return apiFetch<HealthCheckResult[]>(`/endpoints/${endpointId}/checks${qs ? `?${qs}` : ''}`);
+  return apiFetch<HealthCheckResult[]>(`/api/endpoints/${endpointId}/checks${qs ? `?${qs}` : ''}`);
 }
 
 export function getLatestCheck(endpointId: string): Promise<HealthCheckResult | null> {
-  return apiFetch<HealthCheckResult | null>(`/endpoints/${endpointId}/checks/latest`);
+  return apiFetch<HealthCheckResult | null>(`/api/endpoints/${endpointId}/checks/latest`);
 }
 
 export function getDailyStats(endpointId: string, days = 30): Promise<DailyStat[]> {
-  return apiFetch<DailyStat[]>(`/endpoints/${endpointId}/stats?days=${days}`);
+  return apiFetch<DailyStat[]>(`/api/endpoints/${endpointId}/stats?days=${days}`);
 }
 
 export function getUptime(endpointId: string, days = 7): Promise<UptimeResponse> {
-  return apiFetch<UptimeResponse>(`/endpoints/${endpointId}/uptime?days=${days}`);
+  return apiFetch<UptimeResponse>(`/api/endpoints/${endpointId}/uptime?days=${days}`);
 }
 
 export function getIncidents(endpointId: string, limit = 20): Promise<Incident[]> {
-  return apiFetch<Incident[]>(`/endpoints/${endpointId}/incidents?limit=${limit}`);
+  return apiFetch<Incident[]>(`/api/endpoints/${endpointId}/incidents?limit=${limit}`);
 }

@@ -7,13 +7,13 @@ export interface NotificationPreferences {
 }
 
 export function getNotificationPreferences(): Promise<NotificationPreferences> {
-  return apiFetch<NotificationPreferences>('/notifications/preferences');
+  return apiFetch<NotificationPreferences>('/api/notifications/preferences');
 }
 
 export function updateNotificationPreferences(
   input: Partial<Pick<NotificationPreferences, 'notifyOnDown' | 'notifyOnRecovery'>>,
 ): Promise<NotificationPreferences> {
-  return apiFetch<NotificationPreferences>('/notifications/preferences', {
+  return apiFetch<NotificationPreferences>('/api/notifications/preferences', {
     method: 'PUT',
     body: input,
   });

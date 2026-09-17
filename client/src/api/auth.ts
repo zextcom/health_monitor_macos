@@ -20,7 +20,7 @@ interface RegisterResponse {
 }
 
 export async function loginRequest(email: string, password: string): Promise<User> {
-  const data = await apiFetch<LoginResponse>('/auth/login', {
+  const data = await apiFetch<LoginResponse>('/api/auth/login', {
     method: 'POST',
     body: { email, password },
     skipAuth: true,
@@ -34,7 +34,7 @@ export async function loginRequest(email: string, password: string): Promise<Use
 // user becomes admin, subsequent users need an invitation. We log in right
 // after so the app can move straight into an authenticated session.
 export async function registerRequest(email: string, password: string, name: string): Promise<User> {
-  await apiFetch<RegisterResponse>('/auth/register', {
+  await apiFetch<RegisterResponse>('/api/auth/register', {
     method: 'POST',
     body: { email, password, name },
     skipAuth: true,
@@ -46,7 +46,7 @@ export async function logoutRequest(): Promise<void> {
   const refreshToken = await getRefreshToken();
   try {
     if (refreshToken) {
-      await apiFetch('/auth/logout', { method: 'POST', body: { refreshToken } });
+      await apiFetch('/api/auth/logout', { method: 'POST', body: { refreshToken } });
     }
   } finally {
     await clearTokens();

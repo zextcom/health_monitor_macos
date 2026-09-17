@@ -40,5 +40,5 @@ export interface DashboardResponse {
 }
 
 export function getDashboard(): Promise<DashboardResponse> {
-  return apiFetch<DashboardResponse>('/dashboard');
+  return apiFetch<DashboardResponse>('/api/dashboard');
 }

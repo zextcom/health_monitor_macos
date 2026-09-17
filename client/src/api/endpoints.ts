@@ -53,29 +53,29 @@ export function listEndpoints(params: ListEndpointsParams = {}): Promise<Endpoin
   if (params.group) query.set('group', params.group);
   if (params.paused !== undefined) query.set('paused', String(params.paused));
   const qs = query.toString();
-  return apiFetch<Endpoint[]>(`/endpoints${qs ? `?${qs}` : ''}`);
+  return apiFetch<Endpoint[]>(`/api/endpoints${qs ? `?${qs}` : ''}`);
 }
 
 export function getEndpoint(id: string): Promise<Endpoint> {
-  return apiFetch<Endpoint>(`/endpoints/${id}`);
+  return apiFetch<Endpoint>(`/api/endpoints/${id}`);
 }
 
 export function createEndpoint(input: CreateEndpointInput): Promise<Endpoint> {
-  return apiFetch<Endpoint>('/endpoints', { method: 'POST', body: input });
+  return apiFetch<Endpoint>('/api/endpoints', { method: 'POST', body: input });
 }
 
 export function updateEndpoint(id: string, input: UpdateEndpointInput): Promise<Endpoint> {
-  return apiFetch<Endpoint>(`/endpoints/${id}`, { method: 'PUT', body: input });
+  return apiFetch<Endpoint>(`/api/endpoints/${id}`, { method: 'PUT', body: input });
 }
 
 export function deleteEndpoint(id: string): Promise<void> {
-  return apiFetch<void>(`/endpoints/${id}`, { method: 'DELETE' });
+  return apiFetch<void>(`/api/endpoints/${id}`, { method: 'DELETE' });
 }
 
 export function pauseEndpoint(id: string): Promise<Endpoint> {
-  return apiFetch<Endpoint>(`/endpoints/${id}/pause`, { method: 'POST' });
+  return apiFetch<Endpoint>(`/api/endpoints/${id}/pause`, { method: 'POST' });
 }
 
 export function resumeEndpoint(id: string): Promise<Endpoint> {
-  return apiFetch<Endpoint>(`/endpoints/${id}/resume`, { method: 'POST' });
+  return apiFetch<Endpoint>(`/api/endpoints/${id}/resume`, { method: 'POST' });
 }
