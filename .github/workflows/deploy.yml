@@ -20,8 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
-
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
@@ -29,12 +27,26 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/health-monitor
+            cd /var/www/health.zext.dev
             git pull origin main
-            docker compose -f docker-compose.prod.yml build
-            docker compose -f docker-compose.prod.yml --profile migrate run --rm migrate
-            docker compose -f docker-compose.prod.yml up -d api worker nginx
-            docker compose -f docker-compose.prod.yml ps
-            # Wait and check health
-            sleep 10
-            curl -f http://localhost/health || echo "Health check failed!"
+
+            # Backend
+            cd backend
+            pnpm install --frozen-lockfile
+            pnpm run build
+            npx drizzle-kit migrate
+            pm2 restart health-api health-worker
+
+            # Client (web export)
+            cd ../client
+            npm install
+            npx expo export --platform web
+
+            # Copy web build to nginx serving directory
+            rm -rf /var/www/health.zext.dev/public/*
+            cp -r dist/* /var/www/health.zext.dev/public/
+
+            # Verify
+            sleep 3
+            curl -f http://localhost:3030/health || echo "Health check failed!"
+            pm2 status
