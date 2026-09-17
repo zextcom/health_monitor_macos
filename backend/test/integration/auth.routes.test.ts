@@ -24,7 +24,7 @@ describe('auth routes', () => {
     it('should register first user as admin', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'admin@test.com', password: 'testpass123', name: 'Admin' },
       });
 
@@ -38,13 +38,13 @@ describe('auth routes', () => {
     it('should reject registration without invitation when users exist', async () => {
       await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'admin@test.com', password: 'testpass123', name: 'Admin' },
       });
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'second@test.com', password: 'testpass123', name: 'Second' },
       });
 
@@ -54,7 +54,7 @@ describe('auth routes', () => {
     it('should return 400 for invalid email', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'not-an-email', password: 'testpass123', name: 'Admin' },
       });
 
@@ -64,7 +64,7 @@ describe('auth routes', () => {
     it('should return 400 for short password (< 8 chars)', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'admin@test.com', password: 'short', name: 'Admin' },
       });
 
@@ -76,7 +76,7 @@ describe('auth routes', () => {
     beforeEach(async () => {
       await app.inject({
         method: 'POST',
-        url: '/auth/register',
+        url: '/api/auth/register',
         payload: { email: 'admin@test.com', password: 'testpass123', name: 'Admin' },
       });
     });
@@ -84,7 +84,7 @@ describe('auth routes', () => {
     it('should return accessToken, refreshToken, and user (200)', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/login',
+        url: '/api/auth/login',
         payload: { email: 'admin@test.com', password: 'testpass123' },
       });
 
@@ -98,7 +98,7 @@ describe('auth routes', () => {
     it('should return 401 for wrong password', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/login',
+        url: '/api/auth/login',
         payload: { email: 'admin@test.com', password: 'wrongpassword' },
       });
 
@@ -108,7 +108,7 @@ describe('auth routes', () => {
     it('should return 401 for non-existent email', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/login',
+        url: '/api/auth/login',
         payload: { email: 'nobody@test.com', password: 'testpass123' },
       });
 
@@ -118,7 +118,7 @@ describe('auth routes', () => {
     it('should NOT return passwordHash in user object', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/login',
+        url: '/api/auth/login',
         payload: { email: 'admin@test.com', password: 'testpass123' },
       });
 
@@ -133,7 +133,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/refresh',
+        url: '/api/auth/refresh',
         payload: { refreshToken },
       });
 
@@ -149,13 +149,13 @@ describe('auth routes', () => {
 
       await app.inject({
         method: 'POST',
-        url: '/auth/refresh',
+        url: '/api/auth/refresh',
         payload: { refreshToken },
       });
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/refresh',
+        url: '/api/auth/refresh',
         payload: { refreshToken },
       });
 
@@ -165,7 +165,7 @@ describe('auth routes', () => {
     it('should return 401 for invalid token', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/refresh',
+        url: '/api/auth/refresh',
         payload: { refreshToken: 'not-a-real-token' },
       });
 
@@ -179,7 +179,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/logout',
+        url: '/api/auth/logout',
         headers: authHeader(accessToken),
         payload: { refreshToken },
       });
@@ -188,7 +188,7 @@ describe('auth routes', () => {
 
       const refreshRes = await app.inject({
         method: 'POST',
-        url: '/auth/refresh',
+        url: '/api/auth/refresh',
         payload: { refreshToken },
       });
       expect(refreshRes.statusCode).toBe(401);
@@ -199,7 +199,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/logout',
+        url: '/api/auth/logout',
         payload: { refreshToken },
       });
 
@@ -213,7 +213,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/invite',
+        url: '/api/auth/invite',
         headers: authHeader(accessToken),
         payload: { email: 'member@test.com' },
       });
@@ -233,7 +233,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/invite',
+        url: '/api/auth/invite',
         headers: authHeader(memberToken),
         payload: { email: 'another@test.com' },
       });
@@ -244,7 +244,7 @@ describe('auth routes', () => {
     it('should return 401 without token', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/invite',
+        url: '/api/auth/invite',
         payload: { email: 'member@test.com' },
       });
 
@@ -256,7 +256,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/invite',
+        url: '/api/auth/invite',
         headers: authHeader(accessToken),
         payload: { email: 'admin@test.com' },
       });
@@ -271,7 +271,7 @@ describe('auth routes', () => {
 
       const inviteRes = await app.inject({
         method: 'POST',
-        url: '/auth/invite',
+        url: '/api/auth/invite',
         headers: authHeader(accessToken),
         payload: { email: 'member@test.com' },
       });
@@ -279,7 +279,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/accept-invite',
+        url: '/api/auth/accept-invite',
         payload: { token, password: 'memberpass123', name: 'Member' },
       });
 
@@ -290,7 +290,7 @@ describe('auth routes', () => {
 
       const loginRes = await app.inject({
         method: 'POST',
-        url: '/auth/login',
+        url: '/api/auth/login',
         payload: { email: 'member@test.com', password: 'memberpass123' },
       });
       expect(loginRes.statusCode).toBe(200);
@@ -300,7 +300,7 @@ describe('auth routes', () => {
     it('should return 400 for invalid token', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/accept-invite',
+        url: '/api/auth/accept-invite',
         payload: { token: 'not-a-real-token', password: 'memberpass123', name: 'Member' },
       });
 
@@ -320,7 +320,7 @@ describe('auth routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/auth/accept-invite',
+        url: '/api/auth/accept-invite',
         payload: { token: rawToken, password: 'memberpass123', name: 'Member' },
       });
 

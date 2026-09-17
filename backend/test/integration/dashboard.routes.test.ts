@@ -24,7 +24,7 @@ describe('dashboard routes', () => {
     it('should return empty dashboard for new user (200)', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/dashboard',
+        url: '/api/dashboard',
         headers: authHeader(accessToken),
       });
 
@@ -43,31 +43,31 @@ describe('dashboard routes', () => {
     it('should return endpoint summary with correct counts', async () => {
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API 1', url: 'https://api1.example.com' },
       });
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API 2', url: 'https://api2.example.com' },
       });
       const pausedCreateRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API 3', url: 'https://api3.example.com' },
       });
       await app.inject({
         method: 'POST',
-        url: `/endpoints/${pausedCreateRes.json().id}/pause`,
+        url: `/api/endpoints/${pausedCreateRes.json().id}/pause`,
         headers: authHeader(accessToken),
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/dashboard',
+        url: '/api/dashboard',
         headers: authHeader(accessToken),
       });
 
@@ -79,7 +79,7 @@ describe('dashboard routes', () => {
     });
 
     it('should return 401 without auth', async () => {
-      const res = await app.inject({ method: 'GET', url: '/dashboard' });
+      const res = await app.inject({ method: 'GET', url: '/api/dashboard' });
       expect(res.statusCode).toBe(401);
     });
   });

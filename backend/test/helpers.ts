@@ -51,13 +51,13 @@ export async function registerAndLogin(
 ): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
   await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/api/auth/register',
     payload: { email, password, name },
   });
 
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/auth/login',
     payload: { email, password },
   });
 
@@ -86,7 +86,7 @@ export async function inviteAndLogin(
 ): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
   const inviteRes = await app.inject({
     method: 'POST',
-    url: '/auth/invite',
+    url: '/api/auth/invite',
     headers: authHeader(adminToken),
     payload: { email },
   });
@@ -94,13 +94,13 @@ export async function inviteAndLogin(
 
   await app.inject({
     method: 'POST',
-    url: '/auth/accept-invite',
+    url: '/api/auth/accept-invite',
     payload: { token, password, name },
   });
 
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/auth/login',
     payload: { email, password },
   });
 

@@ -24,7 +24,7 @@ describe('notifications routes', () => {
     it('should return default preferences for new user', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
       });
 
@@ -37,14 +37,14 @@ describe('notifications routes', () => {
     it('should return saved preferences', async () => {
       await app.inject({
         method: 'PUT',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
         payload: { notifyOnDown: false, notifyOnRecovery: true },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
       });
 
@@ -59,14 +59,14 @@ describe('notifications routes', () => {
     it('should update preferences', async () => {
       await app.inject({
         method: 'PUT',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
         payload: { notifyOnDown: false, notifyOnRecovery: false },
       });
 
       const res = await app.inject({
         method: 'PUT',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
         payload: { notifyOnDown: true },
       });
@@ -80,7 +80,7 @@ describe('notifications routes', () => {
     it('should create preferences if none exist', async () => {
       const res = await app.inject({
         method: 'PUT',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
         payload: { notifyOnDown: false },
       });
@@ -92,7 +92,7 @@ describe('notifications routes', () => {
 
       const getRes = await app.inject({
         method: 'GET',
-        url: '/notifications/preferences',
+        url: '/api/notifications/preferences',
         headers: authHeader(accessToken),
       });
       expect(getRes.json().notifyOnDown).toBe(false);
@@ -103,7 +103,7 @@ describe('notifications routes', () => {
     it('should add push subscription (201)', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
         payload: { platform: 'web', token: 'push-token-abc', deviceName: 'MacBook' },
       });
@@ -120,20 +120,20 @@ describe('notifications routes', () => {
     it("should list user's subscriptions", async () => {
       await app.inject({
         method: 'POST',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
         payload: { platform: 'apns', token: 'apns-token' },
       });
       await app.inject({
         method: 'POST',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
         payload: { platform: 'fcm', token: 'fcm-token' },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
       });
 
@@ -146,7 +146,7 @@ describe('notifications routes', () => {
     it('should remove subscription (204)', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
         payload: { platform: 'web', token: 'push-token-abc' },
       });
@@ -154,7 +154,7 @@ describe('notifications routes', () => {
 
       const res = await app.inject({
         method: 'DELETE',
-        url: `/notifications/subscriptions/${id}`,
+        url: `/api/notifications/subscriptions/${id}`,
         headers: authHeader(accessToken),
       });
 
@@ -162,7 +162,7 @@ describe('notifications routes', () => {
 
       const listRes = await app.inject({
         method: 'GET',
-        url: '/notifications/subscriptions',
+        url: '/api/notifications/subscriptions',
         headers: authHeader(accessToken),
       });
       expect(listRes.json()).toEqual([]);
@@ -171,7 +171,7 @@ describe('notifications routes', () => {
     it("should return 404 for non-existent/other user's subscription", async () => {
       const res = await app.inject({
         method: 'DELETE',
-        url: '/notifications/subscriptions/00000000-0000-0000-0000-000000000000',
+        url: '/api/notifications/subscriptions/00000000-0000-0000-0000-000000000000',
         headers: authHeader(accessToken),
       });
 

@@ -24,14 +24,14 @@ describe('endpoints routes', () => {
     it("should return user's endpoints (200)", async () => {
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
 
@@ -45,7 +45,7 @@ describe('endpoints routes', () => {
     it('should return empty array for new user', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
 
@@ -54,27 +54,27 @@ describe('endpoints routes', () => {
     });
 
     it('should return 401 without auth', async () => {
-      const res = await app.inject({ method: 'GET', url: '/endpoints' });
+      const res = await app.inject({ method: 'GET', url: '/api/endpoints' });
       expect(res.statusCode).toBe(401);
     });
 
     it('should filter by group query param', async () => {
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com', groupName: 'prod' },
       });
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'Web', url: 'https://web.example.com', groupName: 'staging' },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints?group=prod',
+        url: '/api/endpoints?group=prod',
         headers: authHeader(accessToken),
       });
 
@@ -89,14 +89,14 @@ describe('endpoints routes', () => {
 
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(other.accessToken),
         payload: { name: 'Other endpoint', url: 'https://other.example.com' },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
 
@@ -109,7 +109,7 @@ describe('endpoints routes', () => {
     it('should create endpoint (201)', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -126,7 +126,7 @@ describe('endpoints routes', () => {
     it('should create endpoint with all optional fields', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: {
           name: 'Secure API',
@@ -158,7 +158,7 @@ describe('endpoints routes', () => {
     it('should return 400 for missing required fields (name, url)', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: {},
       });
@@ -169,7 +169,7 @@ describe('endpoints routes', () => {
     it('should return 401 without auth', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         payload: { name: 'API', url: 'https://api.example.com' },
       });
 
@@ -181,7 +181,7 @@ describe('endpoints routes', () => {
     it('should return endpoint (200)', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -189,7 +189,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: `/endpoints/${id}`,
+        url: `/api/endpoints/${id}`,
         headers: authHeader(accessToken),
       });
 
@@ -200,7 +200,7 @@ describe('endpoints routes', () => {
     it('should return 404 for non-existent id', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints/00000000-0000-0000-0000-000000000000',
+        url: '/api/endpoints/00000000-0000-0000-0000-000000000000',
         headers: authHeader(accessToken),
       });
 
@@ -211,7 +211,7 @@ describe('endpoints routes', () => {
       const other = await inviteAndLogin(app, accessToken, 'other@test.com');
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(other.accessToken),
         payload: { name: 'Other', url: 'https://other.example.com' },
       });
@@ -219,7 +219,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: `/endpoints/${id}`,
+        url: `/api/endpoints/${id}`,
         headers: authHeader(accessToken),
       });
 
@@ -231,7 +231,7 @@ describe('endpoints routes', () => {
     it('should update endpoint (200)', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -239,7 +239,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'PUT',
-        url: `/endpoints/${id}`,
+        url: `/api/endpoints/${id}`,
         headers: authHeader(accessToken),
         payload: { name: 'Renamed API', checkInterval: 120 },
       });
@@ -253,7 +253,7 @@ describe('endpoints routes', () => {
     it('should only update provided fields (partial update)', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: {
           name: 'API',
@@ -266,7 +266,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'PUT',
-        url: `/endpoints/${created.id}`,
+        url: `/api/endpoints/${created.id}`,
         headers: authHeader(accessToken),
         payload: { groupName: 'staging' },
       });
@@ -282,7 +282,7 @@ describe('endpoints routes', () => {
     it('should return 404 for non-existent id', async () => {
       const res = await app.inject({
         method: 'PUT',
-        url: '/endpoints/00000000-0000-0000-0000-000000000000',
+        url: '/api/endpoints/00000000-0000-0000-0000-000000000000',
         headers: authHeader(accessToken),
         payload: { name: 'Nope' },
       });
@@ -295,7 +295,7 @@ describe('endpoints routes', () => {
     it('should delete endpoint (204)', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -303,7 +303,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'DELETE',
-        url: `/endpoints/${id}`,
+        url: `/api/endpoints/${id}`,
         headers: authHeader(accessToken),
       });
 
@@ -311,7 +311,7 @@ describe('endpoints routes', () => {
 
       const getRes = await app.inject({
         method: 'GET',
-        url: `/endpoints/${id}`,
+        url: `/api/endpoints/${id}`,
         headers: authHeader(accessToken),
       });
       expect(getRes.statusCode).toBe(404);
@@ -320,7 +320,7 @@ describe('endpoints routes', () => {
     it('should return 404 for non-existent id', async () => {
       const res = await app.inject({
         method: 'DELETE',
-        url: '/endpoints/00000000-0000-0000-0000-000000000000',
+        url: '/api/endpoints/00000000-0000-0000-0000-000000000000',
         headers: authHeader(accessToken),
       });
 
@@ -332,7 +332,7 @@ describe('endpoints routes', () => {
     it('should set isPaused to true', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -340,7 +340,7 @@ describe('endpoints routes', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: `/endpoints/${id}/pause`,
+        url: `/api/endpoints/${id}/pause`,
         headers: authHeader(accessToken),
       });
 
@@ -353,7 +353,7 @@ describe('endpoints routes', () => {
     it('should set isPaused to false', async () => {
       const createRes = await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
@@ -361,13 +361,13 @@ describe('endpoints routes', () => {
 
       await app.inject({
         method: 'POST',
-        url: `/endpoints/${id}/pause`,
+        url: `/api/endpoints/${id}/pause`,
         headers: authHeader(accessToken),
       });
 
       const res = await app.inject({
         method: 'POST',
-        url: `/endpoints/${id}/resume`,
+        url: `/api/endpoints/${id}/resume`,
         headers: authHeader(accessToken),
       });
 
@@ -380,7 +380,7 @@ describe('endpoints routes', () => {
     it('should import endpoints from macOS JSON format', async () => {
       const res = await app.inject({
         method: 'POST',
-        url: '/endpoints/import',
+        url: '/api/endpoints/import',
         headers: authHeader(accessToken),
         payload: [
           { name: 'Imported API', url: 'https://imported.example.com' },
@@ -393,7 +393,7 @@ describe('endpoints routes', () => {
 
       const listRes = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
       expect(listRes.json()).toHaveLength(2);
@@ -402,7 +402,7 @@ describe('endpoints routes', () => {
     it('should return { created, updated } counts', async () => {
       const importRes = await app.inject({
         method: 'POST',
-        url: '/endpoints/import',
+        url: '/api/endpoints/import',
         headers: authHeader(accessToken),
         payload: [{ name: 'Imported API', url: 'https://imported.example.com' }],
       });
@@ -410,14 +410,14 @@ describe('endpoints routes', () => {
 
       const listRes = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
       const [existing] = listRes.json();
 
       const updateRes = await app.inject({
         method: 'POST',
-        url: '/endpoints/import',
+        url: '/api/endpoints/import',
         headers: authHeader(accessToken),
         payload: [{ id: existing.id, name: 'Imported API Renamed', url: 'https://imported.example.com' }],
       });
@@ -428,7 +428,7 @@ describe('endpoints routes', () => {
     it('should handle macOS field name mapping (group, checkIntervalOverride, bearerToken)', async () => {
       await app.inject({
         method: 'POST',
-        url: '/endpoints/import',
+        url: '/api/endpoints/import',
         headers: authHeader(accessToken),
         payload: [
           {
@@ -443,7 +443,7 @@ describe('endpoints routes', () => {
 
       const listRes = await app.inject({
         method: 'GET',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
       });
       const [endpoint] = listRes.json();
@@ -458,20 +458,20 @@ describe('endpoints routes', () => {
     it('should return all user endpoints as JSON array', async () => {
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'API', url: 'https://api.example.com' },
       });
       await app.inject({
         method: 'POST',
-        url: '/endpoints',
+        url: '/api/endpoints',
         headers: authHeader(accessToken),
         payload: { name: 'Web', url: 'https://web.example.com' },
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/endpoints/export',
+        url: '/api/endpoints/export',
         headers: authHeader(accessToken),
       });
 
