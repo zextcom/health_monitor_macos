@@ -9,6 +9,8 @@ struct SettingsView: View {
     @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var dailyStatsStore: DailyStatsStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
+    @EnvironmentObject var backendAuth: BackendAuthStore
+    @EnvironmentObject var backendSync: BackendSyncService
     @State private var editingEndpoint: Endpoint?
     @State private var isPresentingForm = false
     @State private var launchAtLoginError: String?
@@ -17,6 +19,8 @@ struct SettingsView: View {
     @State private var endpointFileError: String?
     @State private var pendingDeletion: [Endpoint] = []
     @State private var selectedEndpointForDetail: Endpoint?
+    @State private var serverEmail = ""
+    @State private var serverPassword = ""
 
     private enum IntervalSelection: Hashable {
         case preset(TimeInterval)
@@ -35,6 +39,8 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label("General", systemImage: "gearshape") }
+            serverTab
+                .tabItem { Label("Server", systemImage: "cloud") }
             endpointsTab
                 .tabItem { Label("Endpoints", systemImage: "network") }
             statsTab
@@ -267,6 +273,96 @@ struct SettingsView: View {
         } catch {
             endpointFileError = "Couldn't export status page: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Server
+
+    private var serverTab: some View {
+        Form {
+            Section {
+                TextField("Server URL", text: $backendAuth.serverURL, prompt: Text("https://health.zext.dev"))
+                    .textFieldStyle(.roundedBorder)
+                Text("The URL of your Health Monitor backend server.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Label("Backend Server", systemImage: "globe")
+            }
+
+            if backendAuth.isConnected, let user = backendAuth.currentUser {
+                Section {
+                    LabeledContent("Email", value: user.email)
+                    LabeledContent("Name", value: user.name)
+                    LabeledContent("Role", value: user.role)
+                    Button("Disconnect", role: .destructive) {
+                        backendAuth.disconnect()
+                        backendSync.stopPolling()
+                    }
+                } header: {
+                    Label("Connected", systemImage: "checkmark.circle.fill")
+                }
+
+                if let dashboard = backendSync.dashboardData {
+                    Section {
+                        LabeledContent("Total Endpoints", value: "\(dashboard.summary.totalEndpoints)")
+                        LabeledContent("Healthy", value: "\(dashboard.summary.healthyEndpoints)")
+                        LabeledContent("Unhealthy", value: "\(dashboard.summary.unhealthyEndpoints)")
+                        LabeledContent("Overall Uptime", value: String(format: "%.1f%%", dashboard.summary.overallUptimePercent))
+                        Button("Sync Now") {
+                            Task { await backendSync.syncNow() }
+                        }
+                        .disabled(backendSync.isSyncing)
+                    } header: {
+                        Label("Dashboard", systemImage: "chart.bar")
+                    }
+                }
+
+                if let error = backendSync.lastSyncError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    } header: {
+                        Label("Sync Error", systemImage: "exclamationmark.triangle")
+                    }
+                }
+            } else {
+                Section {
+                    TextField("Email", text: $serverEmail)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("Password", text: $serverPassword)
+                        .textFieldStyle(.roundedBorder)
+
+                    if let error = backendAuth.errorMessage {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+
+                    Button {
+                        Task {
+                            await backendAuth.connect(email: serverEmail, password: serverPassword)
+                            if backendAuth.isConnected {
+                                serverEmail = ""
+                                serverPassword = ""
+                                backendSync.startPolling()
+                            }
+                        }
+                    } label: {
+                        if backendAuth.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Connect")
+                        }
+                    }
+                    .disabled(serverEmail.isEmpty || serverPassword.isEmpty || backendAuth.serverURL.isEmpty || backendAuth.isLoading)
+                } header: {
+                    Label("Login", systemImage: "person.circle")
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 
     // MARK: - General

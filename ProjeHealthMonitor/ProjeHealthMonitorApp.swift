@@ -37,6 +37,8 @@ struct ProjeHealthMonitorApp: App {
     @StateObject private var dailyStatsStore: DailyStatsStore
     @StateObject private var healthCheckService: HealthCheckService
     @StateObject private var updaterViewModel: UpdaterViewModel
+    @StateObject private var backendAuth: BackendAuthStore
+    @StateObject private var backendSync: BackendSyncService
 
     init() {
         let endpointStore: EndpointStore
@@ -49,6 +51,11 @@ struct ProjeHealthMonitorApp: App {
             historyStore = HealthHistoryStore()
             dailyStatsStore = DailyStatsStore()
         }
+        let backendAuth = BackendAuthStore()
+        let backendSync = BackendSyncService(backendAuth: backendAuth)
+        _backendAuth = StateObject(wrappedValue: backendAuth)
+        _backendSync = StateObject(wrappedValue: backendSync)
+
         let notificationService = NotificationService()
         let healthCheckService = HealthCheckService(
             endpointStore: endpointStore,
@@ -95,6 +102,8 @@ struct ProjeHealthMonitorApp: App {
             PopoverContentView()
                 .environmentObject(endpointStore)
                 .environmentObject(historyStore)
+                .environmentObject(backendAuth)
+                .environmentObject(backendSync)
         } label: {
             MenuBarIconView(status: healthCheckService.overallStatus)
                 .environmentObject(endpointStore)
@@ -107,6 +116,8 @@ struct ProjeHealthMonitorApp: App {
                 .environmentObject(historyStore)
                 .environmentObject(dailyStatsStore)
                 .environmentObject(updaterViewModel)
+                .environmentObject(backendAuth)
+                .environmentObject(backendSync)
         }
         .windowResizability(.contentSize)
     }
