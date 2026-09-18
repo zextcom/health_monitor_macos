@@ -4,12 +4,16 @@ import AppKit
 struct PopoverContentView: View {
     @EnvironmentObject var endpointStore: EndpointStore
     @EnvironmentObject var historyStore: HealthHistoryStore
+    @EnvironmentObject var backendAuth: BackendAuthStore
+    @EnvironmentObject var backendSync: BackendSyncService
     @Environment(\.openWindow) private var openWindow
     @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if endpointStore.endpoints.isEmpty {
+            if backendAuth.isConnected {
+                backendContent
+            } else if endpointStore.endpoints.isEmpty {
                 VStack(spacing: 8) {
                     Text("No endpoints added yet")
                         .foregroundStyle(.secondary)
@@ -54,12 +58,92 @@ struct PopoverContentView: View {
                 Button("Settings") { presentSettingsWindow(using: openWindow) }
                     .buttonStyle(.plain)
                 Spacer()
+                if backendAuth.isConnected {
+                    if backendSync.isSyncing {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .padding(.trailing, 4)
+                    }
+                    Button {
+                        Task { await backendSync.syncNow() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(backendSync.isSyncing)
+                }
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.plain)
             }
             .padding(10)
         }
         .frame(width: 320)
+    }
+
+    @ViewBuilder
+    private var backendContent: some View {
+        if let dashboard = backendSync.dashboardData {
+            HStack(spacing: 12) {
+                Label("\(dashboard.summary.healthyEndpoints)/\(dashboard.summary.totalEndpoints)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                if dashboard.summary.unhealthyEndpoints > 0 {
+                    Label("\(dashboard.summary.unhealthyEndpoints)", systemImage: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                }
+                Spacer()
+                Text(String(format: "%.1f%%", dashboard.summary.overallUptimePercent))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            searchField
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(filteredBackendEndpoints) { endpoint in
+                        BackendEndpointRowView(endpoint: endpoint)
+                        if endpoint.id != filteredBackendEndpoints.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+            }
+            .frame(maxHeight: 320)
+        } else if backendSync.isSyncing {
+            VStack(spacing: 8) {
+                ProgressView()
+                Text("Loading dashboard…")
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+        } else {
+            VStack(spacing: 8) {
+                Text(backendSync.lastSyncError ?? "Connecting to server…")
+                    .foregroundStyle(.secondary)
+                Button("Retry") {
+                    Task { await backendSync.syncNow() }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+        }
+    }
+
+    private var filteredBackendEndpoints: [DashboardEndpointInfo] {
+        guard let dashboard = backendSync.dashboardData else { return [] }
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return dashboard.endpoints }
+        return dashboard.endpoints.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmed)
+                || $0.url.localizedCaseInsensitiveContains(trimmed)
+                || ($0.groupName?.localizedCaseInsensitiveContains(trimmed) ?? false)
+        }
     }
 
     private var searchField: some View {

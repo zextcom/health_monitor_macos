@@ -18,6 +18,7 @@
 		29A9D15F05E309E9A0A66073 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8EA025C6FC55AF16321C6EE /* SettingsUITests.swift */; };
 		31039CA83695ABAB9F95E8CD /* EndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */; };
 		317A01D07A0D69A56A683A87 /* UITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38626493699CDFA81CF0BFF /* UITestCase.swift */; };
+		3AA299BE73A8FD578F62D03A /* BackendEndpointRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DF3D710AAEBD490E8638A0 /* BackendEndpointRowView.swift */; };
 		3AAB57586202D7966BEC43E9 /* EndpointDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783A01FFFC5ED7BE3A3EDBF4 /* EndpointDetailView.swift */; };
 		3B28423787220A2AA63370FE /* DailyStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */; };
 		3C1D6920056793ACFC5377AF /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */; };
@@ -72,6 +73,7 @@
 		1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStatsStoreTests.swift; sourceTree = "<group>"; };
 		27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointRowView.swift; sourceTree = "<group>"; };
 		2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		30DF3D710AAEBD490E8638A0 /* BackendEndpointRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendEndpointRowView.swift; sourceTree = "<group>"; };
 		41F2F01FAAB8DC77179654D1 /* EndpointFormUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointFormUITests.swift; sourceTree = "<group>"; };
 		4226E59C5529BA2094C44102 /* EndpointFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointFormView.swift; sourceTree = "<group>"; };
 		44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStoreTests.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 		BF5D806E8DEE97677742A028 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				30DF3D710AAEBD490E8638A0 /* BackendEndpointRowView.swift */,
 				C6F4CF8AFC5D53FD598C0252 /* DailyUptimeBarView.swift */,
 				783A01FFFC5ED7BE3A3EDBF4 /* EndpointDetailView.swift */,
 				4226E59C5529BA2094C44102 /* EndpointFormView.swift */,
@@ -378,6 +381,7 @@
 			files = (
 				08ED98E358654AA0032018C7 /* APIClient.swift in Sources */,
 				4CF847FFEDC057597ABB84EE /* BackendAuthStore.swift in Sources */,
+				3AA299BE73A8FD578F62D03A /* BackendEndpointRowView.swift in Sources */,
 				8AC1B68D72D3FABBA8DB611D /* BackendModels.swift in Sources */,
 				25DDB78136E8EF790B35D016 /* BackendSyncService.swift in Sources */,
 				0757EC8D89DCCF506658824E /* DailyStat.swift in Sources */,
