@@ -20,7 +20,22 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Deploy to VPS
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build web client
+        run: |
+          pnpm install --frozen-lockfile
+          cd client
+          EXPO_PUBLIC_API_URL=https://health.zext.dev npx expo export --platform web
+
+      - name: Deploy backend
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -30,23 +45,33 @@ jobs:
             cd /var/www/health.zext.dev
             git pull origin main
 
-            # Backend
             cd backend
             pnpm install --frozen-lockfile
             pnpm run build
             npx drizzle-kit migrate
             pm2 restart health-api health-worker
 
-            # Client (web export)
-            cd ../client
-            npm install
-            npx expo export --platform web
-
-            # Copy web build to nginx serving directory
-            rm -rf /var/www/health.zext.dev/public/*
-            cp -r dist/* /var/www/health.zext.dev/public/
-
-            # Verify
             sleep 3
             curl -f http://localhost:3030/health || echo "Health check failed!"
             pm2 status
+
+      - name: Upload web client
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: client/dist/*
+          target: /var/www/health.zext.dev/_client_upload
+          strip_components: 2
+
+      - name: Swap web client files
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            rm -rf /var/www/health.zext.dev/public/*
+            cp -r /var/www/health.zext.dev/_client_upload/* /var/www/health.zext.dev/public/
+            rm -rf /var/www/health.zext.dev/_client_upload
