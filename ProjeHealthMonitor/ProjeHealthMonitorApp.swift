@@ -107,6 +107,8 @@ struct ProjeHealthMonitorApp: App {
         } label: {
             MenuBarIconView(status: healthCheckService.overallStatus)
                 .environmentObject(endpointStore)
+                .environmentObject(backendAuth)
+                .environmentObject(backendSync)
         }
         .menuBarExtraStyle(.window)
 
