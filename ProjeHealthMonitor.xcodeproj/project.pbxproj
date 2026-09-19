@@ -16,6 +16,7 @@
 		25DDB78136E8EF790B35D016 /* BackendSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A218C111116ECF1E18981B4 /* BackendSyncService.swift */; };
 		292EB5D37A94225B932FD574 /* DailyStatsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */; };
 		29A9D15F05E309E9A0A66073 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8EA025C6FC55AF16321C6EE /* SettingsUITests.swift */; };
+		2FCD7B288F7E834BF9147EF1 /* SSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C357A97AFB80710066697B /* SSEClient.swift */; };
 		31039CA83695ABAB9F95E8CD /* EndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E7EE1A4EA52C372411C614 /* EndpointStoreTests.swift */; };
 		317A01D07A0D69A56A683A87 /* UITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38626493699CDFA81CF0BFF /* UITestCase.swift */; };
 		3AA299BE73A8FD578F62D03A /* BackendEndpointRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DF3D710AAEBD490E8638A0 /* BackendEndpointRowView.swift */; };
@@ -87,6 +88,7 @@
 		7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStore.swift; sourceTree = "<group>"; };
 		92057BDBFB7E138F2851C9D3 /* BackendAuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAuthStore.swift; sourceTree = "<group>"; };
 		9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckService.swift; sourceTree = "<group>"; };
+		94C357A97AFB80710066697B /* SSEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClient.swift; sourceTree = "<group>"; };
 		964B1659E52DBB5530768B6E /* BackendModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendModels.swift; sourceTree = "<group>"; };
 		966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStatsRowView.swift; sourceTree = "<group>"; };
 		99625928DAA517E46B40E9CC /* PopoverContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverContentView.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
 				92057BDBFB7E138F2851C9D3 /* BackendAuthStore.swift */,
 				964B1659E52DBB5530768B6E /* BackendModels.swift */,
 				9A218C111116ECF1E18981B4 /* BackendSyncService.swift */,
+				94C357A97AFB80710066697B /* SSEClient.swift */,
 			);
 			path = Backend;
 			sourceTree = "<group>";
@@ -400,6 +403,7 @@
 				9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */,
 				241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */,
 				524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */,
+				2FCD7B288F7E834BF9147EF1 /* SSEClient.swift in Sources */,
 				4871914C2C5EE4949449CF73 /* SecretStore.swift in Sources */,
 				BEED349737875757DC65C88B /* SettingsView.swift in Sources */,
 				A40CB9FE8C2CFB516D09D05F /* SparklineView.swift in Sources */,

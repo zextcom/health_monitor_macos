@@ -73,6 +73,22 @@ struct ProjeHealthMonitorApp: App {
         notificationService.requestAuthorizationIfNeeded()
         healthCheckService.start()
 
+        // When the backend is connected, local health checks are redundant — the backend
+        // handles monitoring. Observe the auth state and toggle services accordingly.
+        // This also covers session restoration on launch: if restoreSession() succeeds,
+        // currentUser transitions from nil → non-nil and polling starts automatically.
+        Task { [weak healthCheckService, weak backendSync] in
+            for await user in backendAuth.$currentUser.values {
+                if user != nil {
+                    healthCheckService?.stop()
+                    backendSync?.startPolling()
+                } else {
+                    backendSync?.stopPolling()
+                    healthCheckService?.start()
+                }
+            }
+        }
+
         // Toggling the MenuBarExtra popover itself from a global hotkey isn't possible with
         // public API (open SwiftUI limitation, FB10185203) — this opens Settings instead, via
         // the same presentSettingsWindow(using:) the popover's own buttons and onboarding use.

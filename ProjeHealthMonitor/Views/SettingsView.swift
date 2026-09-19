@@ -296,7 +296,6 @@ struct SettingsView: View {
                     LabeledContent("Role", value: user.role)
                     Button("Disconnect", role: .destructive) {
                         backendAuth.disconnect()
-                        backendSync.stopPolling()
                     }
                 } header: {
                     Label("Connected", systemImage: "checkmark.circle.fill")
@@ -345,7 +344,6 @@ struct SettingsView: View {
                             if backendAuth.isConnected {
                                 serverEmail = ""
                                 serverPassword = ""
-                                backendSync.startPolling()
                             }
                         }
                     } label: {
