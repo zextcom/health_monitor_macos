@@ -32,19 +32,30 @@ export async function getUserPushTokens(
   }));
 }
 
-async function sendAPNS(token: string, payload: NotificationPayload): Promise<void> {
-  // TODO: Implement with @parse/node-apn or similar when APNs credentials are configured
-  console.log(`[APNs] Would send to ${token.slice(0, 8)}...: ${payload.title}`);
-}
+async function sendExpoPush(token: string, payload: NotificationPayload): Promise<void> {
+  const response = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: token,
+      title: payload.title,
+      body: payload.body,
+      data: payload.data,
+    }),
+  });
 
-async function sendFCM(token: string, payload: NotificationPayload): Promise<void> {
-  // TODO: Implement with firebase-admin when FCM credentials are configured
-  console.log(`[FCM] Would send to ${token.slice(0, 8)}...: ${payload.title}`);
-}
+  if (!response.ok) {
+    const text = await response.text();
+    console.error(`[ExpoPush] HTTP ${response.status} for ${token.slice(0, 20)}...: ${text}`);
+    return;
+  }
 
-async function sendWebPush(token: string, payload: NotificationPayload): Promise<void> {
-  // TODO: Implement with web-push package when VAPID keys are configured
-  console.log(`[WebPush] Would send to ${token.slice(0, 8)}...: ${payload.title}`);
+  const result = await response.json();
+  if (result.data?.status === 'error') {
+    console.error(
+      `[ExpoPush] Error for ${token.slice(0, 20)}...: ${result.data.message ?? 'unknown'}`,
+    );
+  }
 }
 
 export async function sendNotification(
@@ -62,13 +73,7 @@ export async function sendNotification(
 
   for (const { platform, token } of tokens) {
     try {
-      if (platform === 'apns') {
-        await sendAPNS(token, payload);
-      } else if (platform === 'fcm') {
-        await sendFCM(token, payload);
-      } else if (platform === 'web') {
-        await sendWebPush(token, payload);
-      }
+      await sendExpoPush(token, payload);
     } catch (error) {
       console.error(`Failed to send ${platform} notification to user ${userId}:`, error);
     }
