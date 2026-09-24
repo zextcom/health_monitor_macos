@@ -35,10 +35,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Debug:
-          # Local dev builds stay ad-hoc/automatic — no Team ID needed to build and run locally.
-          # Hardened Runtime is off here too: it would otherwise reject loading Sparkle.framework
-          # (separately signed, from its own SPM release artifact) under an ad-hoc identity.
+          # App Group entitlements require a development team even for local builds — ad-hoc
+          # signing isn't sufficient. Hardened Runtime is off here so Sparkle.framework (signed
+          # with Sparkle's own certificate) can load under an automatic identity.
           CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: 4MSY72K4VX
           ENABLE_HARDENED_RUNTIME: false
         Release:
           # Real signing (and Hardened Runtime, required for notarization) only for Release
@@ -52,6 +53,8 @@ targets:
     dependencies:
       - package: Sparkle
       - package: KeyboardShortcuts
+      - target: HealthMonitorWidget
+        embed: true
     info:
       path: ProjeHealthMonitor/Info.plist
       properties:
@@ -70,6 +73,33 @@ targets:
         # standard justification for the blanket exception.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+
+  HealthMonitorWidget:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: HealthMonitorWidget
+      - path: ProjeHealthMonitor/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zext.healthmonitor.widget
+        PRODUCT_NAME: HealthMonitorWidget
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: HealthMonitorWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_ENTITLEMENTS: HealthMonitorWidget/HealthMonitorWidget.entitlements
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: 4MSY72K4VX
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          DEVELOPMENT_TEAM: 4MSY72K4VX
+          ENABLE_HARDENED_RUNTIME: true
+    dependencies: []
 
   ProjeHealthMonitorTests:
     type: bundle.unit-test
@@ -103,6 +133,7 @@ schemes:
     build:
       targets:
         ProjeHealthMonitor: all
+        HealthMonitorWidget: all
         ProjeHealthMonitorTests: [test]
         ProjeHealthMonitorUITests: [test]
     run:

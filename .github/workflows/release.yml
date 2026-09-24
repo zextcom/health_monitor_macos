@@ -90,6 +90,9 @@ jobs:
           codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Updater.app"
           codesign "${SIGN_ARGS[@]}" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
           codesign --force --options runtime --timestamp \
+            --entitlements HealthMonitorWidget/HealthMonitorWidget.entitlements \
+            --sign "$IDENTITY" "$APP_PATH/Contents/PlugIns/HealthMonitorWidget.appex"
+          codesign --force --options runtime --timestamp \
             --entitlements ProjeHealthMonitor/ProjeHealthMonitor.entitlements \
             --sign "$IDENTITY" "$APP_PATH"
 

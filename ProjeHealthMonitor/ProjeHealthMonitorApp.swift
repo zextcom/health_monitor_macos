@@ -70,6 +70,9 @@ struct ProjeHealthMonitorApp: App {
         _healthCheckService = StateObject(wrappedValue: healthCheckService)
         _updaterViewModel = StateObject(wrappedValue: UpdaterViewModel())
 
+        endpointStore.historyStore = historyStore
+        backendSync.endpointStore = endpointStore
+
         notificationService.requestAuthorizationIfNeeded()
         healthCheckService.start()
 

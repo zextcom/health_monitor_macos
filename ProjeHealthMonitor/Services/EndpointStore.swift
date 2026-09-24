@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 @MainActor
 final class EndpointStore: ObservableObject {
@@ -53,6 +56,11 @@ final class EndpointStore: ObservableObject {
     @Published var hasCompletedOnboarding: Bool {
         didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
+
+    /// Set after initialisation so `updateWidgetData()` can include the latest health-check
+    /// result for each endpoint. Not an init parameter because `HealthHistoryStore` is created
+    /// independently in `ProjeHealthMonitorApp`.
+    weak var historyStore: HealthHistoryStore?
 
     private let defaults: UserDefaults
     /// Guards `persistEndpoints()` from running as a side effect of the `didSet` firing during
@@ -172,6 +180,33 @@ final class EndpointStore: ObservableObject {
         guard !isLoading else { return }
         guard let data = try? JSONEncoder().encode(endpoints) else { return }
         defaults.set(data, forKey: Keys.endpoints)
+        updateWidgetData()
+    }
+
+    // MARK: - Widget data
+
+    /// Builds a `WidgetDashboard` snapshot from the current endpoints and their most recent
+    /// health-check results, writes it to the App Group `UserDefaults`, and tells WidgetKit to
+    /// refresh all timelines.
+    func updateWidgetData() {
+        let statuses = endpoints.map { endpoint -> WidgetEndpointStatus in
+            let lastResult = historyStore?.lastResult(for: endpoint.id)
+            return WidgetEndpointStatus(
+                name: endpoint.name,
+                url: endpoint.url.absoluteString,
+                isHealthy: lastResult?.isHealthy ?? true,
+                responseTimeMs: lastResult?.responseTimeMs,
+                lastCheckedAt: lastResult?.timestamp,
+                group: endpoint.group
+            )
+        }
+        let dashboard = WidgetDashboard(endpoints: statuses, updatedAt: Date())
+        guard let defaults = UserDefaults(suiteName: WidgetDashboard.suiteName),
+              let encoded = try? JSONEncoder().encode(dashboard) else { return }
+        defaults.set(encoded, forKey: WidgetDashboard.userDefaultsKey)
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     private func persistRetainedEndpoints() {

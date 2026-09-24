@@ -8,5 +8,9 @@
 	     see https://sparkle-project.org/documentation/#hardened-runtime-and-notarization -->
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.zext.healthmonitor</string>
+	</array>
 </dict>
 </plist>

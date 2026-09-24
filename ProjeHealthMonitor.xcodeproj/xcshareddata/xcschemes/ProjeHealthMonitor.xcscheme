@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1430"
+   wasCreatedForAppExtension = "YES"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       runPostActionsOnFailure = "NO">
       <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "981C1DE60A1E09F5C7373615"
+               BuildableName = "HealthMonitorWidget.appex"
+               BlueprintName = "HealthMonitorWidget"
+               ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
@@ -60,9 +75,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7BFF51B90F6CC4E791BCF188"
-            BuildableName = "ProjeHealthMonitor.app"
-            BlueprintName = "ProjeHealthMonitor"
+            BlueprintIdentifier = "981C1DE60A1E09F5C7373615"
+            BuildableName = "HealthMonitorWidget.appex"
+            BlueprintName = "HealthMonitorWidget"
             ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -95,21 +110,22 @@
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
-      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      selectedDebuggerIdentifier = ""
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
-      allowLocationSimulation = "YES">
+      allowLocationSimulation = "YES"
+      launchAutomaticallySubstyle = "2">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7BFF51B90F6CC4E791BCF188"
-            BuildableName = "ProjeHealthMonitor.app"
-            BlueprintName = "ProjeHealthMonitor"
+            BlueprintIdentifier = "981C1DE60A1E09F5C7373615"
+            BuildableName = "HealthMonitorWidget.appex"
+            BlueprintName = "HealthMonitorWidget"
             ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -126,9 +142,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7BFF51B90F6CC4E791BCF188"
-            BuildableName = "ProjeHealthMonitor.app"
-            BlueprintName = "ProjeHealthMonitor"
+            BlueprintIdentifier = "981C1DE60A1E09F5C7373615"
+            BuildableName = "HealthMonitorWidget.appex"
+            BlueprintName = "HealthMonitorWidget"
             ReferencedContainer = "container:ProjeHealthMonitor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

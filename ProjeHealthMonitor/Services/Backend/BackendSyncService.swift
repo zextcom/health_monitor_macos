@@ -14,6 +14,9 @@ final class BackendSyncService: ObservableObject {
     @Published var isSyncing: Bool = false
 
     private let backendAuth: BackendAuthStore
+    /// Set after initialisation so widget data can be refreshed when the backend pushes new
+    /// dashboard state.
+    weak var endpointStore: EndpointStore?
     private var pollingTask: Task<Void, Never>?
     private var sseClient: SSEClient?
     private var sseConnected: Bool = false
@@ -52,6 +55,7 @@ final class BackendSyncService: ObservableObject {
             let dashboard = try await client.getDashboard()
             dashboardData = dashboard
             lastSyncError = nil
+            endpointStore?.updateWidgetData()
         } catch APIClientError.unauthorized {
             backendAuth.disconnect()
         } catch {
