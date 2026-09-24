@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { apiFetch } from '../api/client';
 
 // Configure how notifications appear when app is in foreground
@@ -44,6 +45,7 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
 
 export function usePushNotifications() {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const router = useRouter();
   const notificationListener = useRef<Notifications.EventSubscription | undefined>(undefined);
   const responseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
@@ -51,7 +53,6 @@ export function usePushNotifications() {
     registerForPushNotificationsAsync().then(async (token) => {
       if (token) {
         setExpoPushToken(token);
-        // Register token with backend
         try {
           const platform = Platform.OS === 'ios' ? 'apns' : Platform.OS === 'android' ? 'fcm' : 'web';
           await apiFetch('/api/notifications/subscriptions', {
@@ -68,23 +69,22 @@ export function usePushNotifications() {
       }
     });
 
-    // Handle notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification);
     });
 
-    // Handle notification taps
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      console.log('Notification tapped:', data);
-      // TODO: Navigate to endpoint detail when tapped
+      const data = response.notification.request.content.data as { endpointId?: string };
+      if (data.endpointId) {
+        router.push(`/endpoints/${data.endpointId}`);
+      }
     });
 
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, []);
+  }, [router]);
 
   return { expoPushToken };
 }
