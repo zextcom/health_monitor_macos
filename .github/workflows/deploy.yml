@@ -16,6 +16,7 @@ on:
       - 'backend/**'
       - 'client/**'
       - 'packages/**'
+      - 'pnpm-lock.yaml'
 
 jobs:
   deploy:
