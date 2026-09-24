@@ -36,4 +36,7 @@ jobs:
             -scheme ProjeHealthMonitor \
             -configuration Debug \
             -derivedDataPath build \
-            -destination 'platform=macOS'
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=""
