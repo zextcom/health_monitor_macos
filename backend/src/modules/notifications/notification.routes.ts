@@ -36,6 +36,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         userId: request.user.id,
         notifyOnDown: true,
         notifyOnRecovery: true,
+        notifyOnVersionChange: true,
       }
     );
   });
@@ -65,6 +66,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         userId: request.user.id,
         notifyOnDown: parsed.data.notifyOnDown ?? true,
         notifyOnRecovery: parsed.data.notifyOnRecovery ?? true,
+        notifyOnVersionChange: parsed.data.notifyOnVersionChange ?? true,
       })
       .returning();
     return created;

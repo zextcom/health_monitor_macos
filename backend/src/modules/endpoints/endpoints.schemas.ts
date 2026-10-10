@@ -6,6 +6,22 @@ const jsonAssertionSchema = z.object({
   matchMode: z.enum(['exact', 'contains', 'regex']).default('exact'),
 });
 
+const httpUrl = z
+  .string()
+  .url()
+  .refine((value) => /^https?:\/\//i.test(value), 'Must be an http(s) URL');
+
+export const versionCheckSchema = z.object({
+  isEnabled: z.boolean().default(true),
+  url: httpUrl,
+  everyNChecks: z.number().int().min(1).max(1000).default(5),
+  versionFieldPath: z.string().trim().min(1),
+  assertions: z.array(jsonAssertionSchema).default([]),
+  authType: z.enum(['none', 'bearer_token', 'basic_auth', 'custom_header']).default('none'),
+  authUsername: z.string().nullable().default(null),
+  authHeaderName: z.string().nullable().default(null),
+});
+
 export const createEndpointSchema = z.object({
   name: z.string().min(1).max(255),
   url: z.string().min(1),
@@ -18,6 +34,10 @@ export const createEndpointSchema = z.object({
   authUsername: z.string().nullable().optional(),
   authHeaderName: z.string().nullable().optional(),
   authSecret: z.string().optional(),
+  /** `null` removes the version check (and its secret). */
+  versionCheck: versionCheckSchema.nullable().optional(),
+  /** Secret for `versionCheck.authType` — stored encrypted, never returned. */
+  versionAuthSecret: z.string().optional(),
 });
 
 export const updateEndpointSchema = createEndpointSchema.partial();
@@ -44,6 +64,23 @@ export const importEndpointSchema = z
       .default('none'),
     authUsername: z.string().nullable().optional(),
     authHeaderName: z.string().nullable().optional(),
+    // macOS export shape: camelCase auth enum, no secrets.
+    versionCheck: z
+      .object({
+        isEnabled: z.boolean().optional().default(true),
+        url: httpUrl,
+        everyNChecks: z.number().int().min(1).max(1000).optional().default(5),
+        versionFieldPath: z.string(),
+        assertions: z.array(importJsonAssertionSchema).optional().default([]),
+        authType: z
+          .enum(['none', 'bearerToken', 'basicAuth', 'customHeader'])
+          .optional()
+          .default('none'),
+        authUsername: z.string().nullable().optional(),
+        authHeaderName: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
   })
   .passthrough();
 
@@ -58,6 +95,7 @@ export const endpointParamsSchema = z.object({
   id: z.string().uuid(),
 });
 
+export type VersionCheckInput = z.infer<typeof versionCheckSchema>;
 export type CreateEndpointInput = z.infer<typeof createEndpointSchema>;
 export type UpdateEndpointInput = z.infer<typeof updateEndpointSchema>;
 export type ImportEndpointInput = z.infer<typeof importEndpointSchema>;

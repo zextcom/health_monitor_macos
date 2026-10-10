@@ -1,14 +1,10 @@
 import SwiftUI
 
 struct EndpointFormView: View {
-    enum SecretUpdate {
-        case unchanged
-        case set(String)
-        case cleared
-    }
-
     enum FormResult {
-        case save(Endpoint, secret: SecretUpdate)
+        /// `versionSecret` targets `VersionCheckConfig.secretAccount(for:)`, separate from the
+        /// endpoint's own auth secret.
+        case save(Endpoint, secret: SecretUpdate, versionSecret: SecretUpdate)
         case cancel
     }
 
@@ -53,6 +49,12 @@ struct EndpointFormView: View {
     /// Set only for `.tcp` test runs — `nil` while `.http` or before any test has run.
     @State private var testTCPConnected: Bool?
 
+    @State private var isAdvancedExpanded: Bool
+    @State private var versionDraft: VersionCheckDraft
+    @State private var isVersionTesting = false
+    @State private var versionTestResult: VersionCheckResult?
+    @State private var versionTestFields: [HealthCheckService.FlattenedJSONField] = []
+
     init(endpoint: Endpoint?, onComplete: @escaping (FormResult) -> Void) {
         self.originalEndpoint = endpoint
         self.onComplete = onComplete
@@ -67,6 +69,10 @@ struct EndpointFormView: View {
         _authUsername = State(initialValue: endpoint?.authUsername ?? "")
         _authHeaderName = State(initialValue: endpoint?.authHeaderName ?? "")
         _group = State(initialValue: endpoint?.group ?? "")
+        _versionDraft = State(initialValue: VersionCheckDraft(config: endpoint?.versionCheck))
+        // Collapsed by default, but opened when editing an endpoint that already uses it, so the
+        // configured feature isn't hidden.
+        _isAdvancedExpanded = State(initialValue: endpoint?.versionCheck?.isEnabled == true)
     }
 
     var body: some View {
@@ -122,33 +128,7 @@ struct EndpointFormView: View {
 
                 if checkType == .http {
                     Section {
-                        ForEach($assertions) { $assertion in
-                            HStack {
-                                TextField("JSON field", text: $assertion.path, prompt: Text("data.status"))
-                                TextField("Expected value", text: $assertion.expectedValue, prompt: Text("healthy"))
-                                Picker("", selection: $assertion.matchMode) {
-                                    ForEach(MatchMode.allCases) { mode in
-                                        Text(mode.displayName).tag(mode)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(width: 100)
-                                .labelsHidden()
-                                Button {
-                                    assertions.removeAll { $0.id == assertion.id }
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Remove assertion")
-                            }
-                        }
-                        Button {
-                            assertions.append(JSONAssertion(path: "", expectedValue: ""))
-                        } label: {
-                            Label("Add Assertion", systemImage: "plus")
-                        }
+                        assertionRows($assertions)
                         Text("All assertions below must match (AND) for the endpoint to be considered healthy. Leave the list empty to check only the HTTP status code. A dot-separated field path is looked up in the JSON body, e.g. data.status. Match mode controls how the expected value is compared: Exact (trimmed, case-insensitive equality), Contains (substring), or Regex (pattern match; an invalid pattern never matches).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -160,6 +140,20 @@ struct EndpointFormView: View {
                     } header: {
                         Label("JSON Field Match (optional)", systemImage: "curlybraces")
                     }
+                }
+
+                Section {
+                    DisclosureGroup(isExpanded: $isAdvancedExpanded) {
+                        advancedSectionContent
+                    } label: {
+                        // macOS only toggles a DisclosureGroup from its chevron; make the whole
+                        // label clickable too, which is where people actually click.
+                        Label("Advanced", systemImage: "slider.horizontal.3")
+                            .contentShape(Rectangle())
+                            .onTapGesture { withAnimation { isAdvancedExpanded.toggle() } }
+                    }
+                    // No accessibilityIdentifier here: on a DisclosureGroup it propagates to every
+                    // child and would override the identifiers of the fields inside.
                 }
             }
             .formStyle(.grouped)
@@ -184,6 +178,196 @@ struct EndpointFormView: View {
             .padding()
         }
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 480, idealHeight: 680, maxHeight: 820)
+    }
+
+    // MARK: - Assertion rows (shared by health and version check)
+
+    @ViewBuilder
+    private func assertionRows(_ list: Binding<[JSONAssertion]>) -> some View {
+        ForEach(list) { $assertion in
+            HStack {
+                TextField("JSON field", text: $assertion.path, prompt: Text("data.status"))
+                TextField("Expected value", text: $assertion.expectedValue, prompt: Text("healthy"))
+                Picker("", selection: $assertion.matchMode) {
+                    ForEach(MatchMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 100)
+                .labelsHidden()
+                Button {
+                    list.wrappedValue.removeAll { $0.id == assertion.id }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove assertion")
+            }
+        }
+        Button {
+            list.wrappedValue.append(JSONAssertion(path: "", expectedValue: ""))
+        } label: {
+            Label("Add Assertion", systemImage: "plus")
+        }
+    }
+
+    // MARK: - Advanced: version check
+
+    @ViewBuilder
+    private var advancedSectionContent: some View {
+        Toggle("Version check", isOn: $versionDraft.isEnabled)
+            .accessibilityIdentifier("VersionCheckToggle")
+        Text("Every N health checks, fetch JSON from a separate URL and read a version field from it. Changes are recorded and notified; a failing version check shows a warning but never marks the endpoint down.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        if versionDraft.isEnabled {
+            TextField("Version URL", text: $versionDraft.urlString, prompt: Text("https://api.example.com/version"))
+                .accessibilityIdentifier("VersionURLField")
+            TextField("Run every N health checks", text: $versionDraft.everyNChecks, prompt: Text("5"))
+                .accessibilityIdentifier("VersionEveryNField")
+            TextField("Version field", text: $versionDraft.versionFieldPath, prompt: Text("data.version"))
+                .accessibilityIdentifier("VersionFieldPathField")
+
+            Picker("Auth", selection: $versionDraft.authType) {
+                ForEach(AuthType.allCases) { type in
+                    Text(type.displayName).tag(type)
+                }
+            }
+            switch versionDraft.authType {
+            case .none:
+                EmptyView()
+            case .bearerToken:
+                SecureField(versionDraft.authType.secretFieldLabel, text: $versionDraft.secret)
+            case .basicAuth:
+                TextField("Username", text: $versionDraft.authUsername)
+                SecureField(versionDraft.authType.secretFieldLabel, text: $versionDraft.secret)
+            case .customHeader:
+                TextField("Header name", text: $versionDraft.authHeaderName, prompt: Text("X-API-Key"))
+                SecureField(versionDraft.authType.secretFieldLabel, text: $versionDraft.secret)
+            }
+            if versionDraft.authType != .none {
+                Text(hasExistingVersionSecret
+                    ? "Separate from the endpoint's own auth. Stored in the macOS Keychain — leave blank to keep the current value."
+                    : "Separate from the endpoint's own auth. Stored in the macOS Keychain.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Version assertions (optional, all must match)")
+                .font(.caption.bold())
+            assertionRows($versionDraft.assertions)
+
+            versionTestContent
+        }
+    }
+
+    private var hasExistingVersionSecret: Bool {
+        guard let original = originalEndpoint?.versionCheck else { return false }
+        return original.authType != .none && original.authType == versionDraft.authType
+    }
+
+    @ViewBuilder
+    private var versionTestContent: some View {
+        HStack {
+            Button {
+                Task { await runVersionTest() }
+            } label: {
+                if isVersionTesting {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Test Version Check")
+                }
+            }
+            .disabled(versionDraft.parsedURL == nil || isVersionTesting)
+            .accessibilityIdentifier("VersionTestButton")
+
+            if let versionTestResult {
+                if versionTestResult.isSuccess {
+                    Label("Version \(versionTestResult.version ?? "?")", systemImage: "checkmark.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.green)
+                } else {
+                    Label(versionTestResult.failureReason ?? "Failed", systemImage: "xmark.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+        }
+
+        if !versionTestFields.isEmpty {
+            Text("Use a field as the version, or add it as an assertion:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(versionTestFields) { field in
+                        HStack {
+                            Text(field.path)
+                                .font(.system(.caption, design: .monospaced))
+                            Spacer()
+                            Text(field.value)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Button("Version") { versionDraft.versionFieldPath = field.path }
+                                .controlSize(.mini)
+                                .accessibilityLabel("Use \(field.path) as version field")
+                            Button("Assert") {
+                                if let index = versionDraft.assertions.firstIndex(where: { $0.path == field.path }) {
+                                    versionDraft.assertions[index].expectedValue = field.value
+                                } else {
+                                    versionDraft.assertions.append(JSONAssertion(path: field.path, expectedValue: field.value))
+                                }
+                            }
+                            .controlSize(.mini)
+                            .accessibilityLabel("Add assertion for \(field.path)")
+                        }
+                        .disabled(!field.isSelectable)
+                        .opacity(field.isSelectable ? 1 : 0.4)
+                    }
+                }
+            }
+            .frame(maxHeight: 180)
+        }
+    }
+
+    /// The secret for a live version test: whatever's typed, or the stored one when editing with
+    /// the same auth type and the field left blank.
+    private var effectiveVersionSecretForTesting: String? {
+        let trimmed = versionDraft.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        guard hasExistingVersionSecret, let originalEndpoint else { return nil }
+        return SecretStore.secret(for: VersionCheckConfig.secretAccount(for: originalEndpoint.id))
+    }
+
+    private func runVersionTest() async {
+        guard let config = versionDraft.testConfig else { return }
+        isVersionTesting = true
+        defer { isVersionTesting = false }
+
+        let headers = HealthCheckService.authHeaders(type: config.authType, username: config.authUsername,
+                                                       secret: effectiveVersionSecretForTesting, headerName: config.authHeaderName)
+        switch await HealthCheckService.performRequest(url: config.url, timeout: Self.testTimeout, headers: headers) {
+        case .success(let raw):
+            let json = try? JSONSerialization.jsonObject(with: raw.data)
+            versionTestFields = json.map { HealthCheckService.flatten(json: $0) } ?? []
+            if json != nil, config.versionFieldPath.isEmpty {
+                versionTestResult = VersionCheckResult(timestamp: Date(), isSuccess: false, version: nil,
+                                                       failureReason: "Pick a version field below",
+                                                       responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode)
+            } else {
+                versionTestResult = HealthCheckService.evaluateVersionResponse(raw, config: config)
+            }
+        case .failure(let error):
+            versionTestFields = []
+            versionTestResult = VersionCheckResult(timestamp: Date(), isSuccess: false, version: nil,
+                                                   failureReason: error.displayMessage, responseTimeMs: error.elapsedMs, statusCode: nil)
+        }
     }
 
     // MARK: - Group
@@ -300,12 +484,7 @@ struct EndpointFormView: View {
     }
 
     private var secretPlaceholder: String {
-        switch authType {
-        case .none: return ""
-        case .bearerToken: return "Token"
-        case .basicAuth: return "Password"
-        case .customHeader: return "Header value"
-        }
+        authType.secretFieldLabel
     }
 
     private var hasExistingSecret: Bool {
@@ -537,7 +716,18 @@ struct EndpointFormView: View {
             interval = seconds
         }
 
+        let versionOutput: VersionCheckDraft.Output
+        switch versionDraft.validate(original: originalEndpoint?.versionCheck) {
+        case .success(let output):
+            versionOutput = output
+        case .failure(let error):
+            errorMessage = error.message
+            isAdvancedExpanded = true
+            return
+        }
+
         var endpoint = originalEndpoint ?? Endpoint(id: matchedRetainedEndpoint?.id ?? UUID(), name: trimmedName, url: url)
+        endpoint.versionCheck = versionOutput.config
         endpoint.name = trimmedName
         endpoint.url = url
         endpoint.checkType = checkType
@@ -554,7 +744,7 @@ struct EndpointFormView: View {
             endpoint.authHeaderName = nil
             let secretUpdate: SecretUpdate = hasExistingSecret ? .cleared : .unchanged
             reclaimRetainedMatchIfNeeded()
-            onComplete(.save(endpoint, secret: secretUpdate))
+            onComplete(.save(endpoint, secret: secretUpdate, versionSecret: versionOutput.secretUpdate))
             return
         }
 
@@ -580,16 +770,9 @@ struct EndpointFormView: View {
             secretUpdate = .unchanged // editing, left blank, auth type unchanged: keep existing secret
         }
 
-        var cleanedAssertions: [JSONAssertion] = []
-        for assertion in assertions {
-            let path = assertion.path.trimmingCharacters(in: .whitespacesAndNewlines)
-            let value = assertion.expectedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if path.isEmpty, value.isEmpty { continue } // fully blank row, drop silently
-            guard !path.isEmpty, !value.isEmpty else {
-                errorMessage = "Each JSON assertion needs both a field path and an expected value"
-                return
-            }
-            cleanedAssertions.append(JSONAssertion(id: assertion.id, path: path, expectedValue: value, matchMode: assertion.matchMode))
+        guard let cleanedAssertions = JSONAssertion.cleaned(assertions) else {
+            errorMessage = "Each JSON assertion needs both a field path and an expected value"
+            return
         }
 
         endpoint.expectedStatusCode = statusCode
@@ -599,7 +782,7 @@ struct EndpointFormView: View {
         endpoint.authHeaderName = authType == .customHeader ? authHeaderName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
 
         reclaimRetainedMatchIfNeeded()
-        onComplete(.save(endpoint, secret: secretUpdate))
+        onComplete(.save(endpoint, secret: secretUpdate, versionSecret: versionOutput.secretUpdate))
     }
 
     /// Clears the retained record once its history/stats are about to go live again under the

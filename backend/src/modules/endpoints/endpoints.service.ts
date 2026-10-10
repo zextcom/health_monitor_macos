@@ -1,8 +1,16 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { endpoints, endpointSecrets, type Endpoint, type NewEndpoint } from '../../db/schema.js';
+import {
+  endpoints,
+  endpointSecrets,
+  endpointVersionSecrets,
+  type Endpoint,
+  type NewEndpoint,
+  type VersionCheckConfig,
+} from '../../db/schema.js';
 import { encrypt } from '../../utils/crypto.js';
 import { publishScheduleSync } from '../checks/schedule-sync.js';
+import { getVersionHistory, resetVersionCheckCounter, type VersionHistoryResponse } from '../checks/version-check.js';
 import type {
   CreateEndpointInput,
   UpdateEndpointInput,
@@ -49,8 +57,53 @@ export async function getEndpoint(userId: string, endpointId: string): Promise<E
   return endpoint;
 }
 
+function mapImportedVersionCheck(
+  versionCheck: ImportEndpointInput['versionCheck'],
+): VersionCheckConfig | null | undefined {
+  if (!versionCheck) {
+    return versionCheck;
+  }
+  return {
+    isEnabled: versionCheck.isEnabled,
+    url: versionCheck.url,
+    everyNChecks: versionCheck.everyNChecks,
+    versionFieldPath: versionCheck.versionFieldPath,
+    assertions: versionCheck.assertions,
+    authType: importAuthTypeMap[versionCheck.authType] ?? 'none',
+    authUsername: versionCheck.authUsername ?? null,
+    authHeaderName: versionCheck.authHeaderName ?? null,
+  };
+}
+
+/**
+ * Keeps the version secret consistent with the saved config: a new secret is stored, and an
+ * existing one is dropped once the version check is removed or no longer uses auth.
+ */
+async function syncVersionSecret(
+  endpointId: string,
+  versionCheck: VersionCheckConfig | null | undefined,
+  versionAuthSecret: string | undefined,
+): Promise<void> {
+  if (!versionCheck || versionCheck.authType === 'none') {
+    if (versionCheck !== undefined) {
+      await db.delete(endpointVersionSecrets).where(eq(endpointVersionSecrets.endpointId, endpointId));
+    }
+    return;
+  }
+  if (versionAuthSecret) {
+    const { encrypted, iv } = encrypt(versionAuthSecret);
+    await db
+      .insert(endpointVersionSecrets)
+      .values({ endpointId, encryptedValue: encrypted, iv })
+      .onConflictDoUpdate({
+        target: endpointVersionSecrets.endpointId,
+        set: { encryptedValue: encrypted, iv, updatedAt: new Date() },
+      });
+  }
+}
+
 export async function createEndpoint(userId: string, data: CreateEndpointInput): Promise<Endpoint> {
-  const { authSecret, ...rest } = data;
+  const { authSecret, versionAuthSecret, ...rest } = data;
 
   const [endpoint] = await db
     .insert(endpoints)
@@ -69,6 +122,8 @@ export async function createEndpoint(userId: string, data: CreateEndpointInput):
     });
   }
 
+  await syncVersionSecret(endpoint.id, endpoint.versionCheck, versionAuthSecret);
+
   await publishScheduleSync({
     action: 'upsert',
     endpointId: endpoint.id,
@@ -83,9 +138,9 @@ export async function updateEndpoint(
   endpointId: string,
   data: UpdateEndpointInput,
 ): Promise<Endpoint> {
-  await getEndpoint(userId, endpointId);
+  const existing = await getEndpoint(userId, endpointId);
 
-  const { authSecret, ...rest } = data;
+  const { authSecret, versionAuthSecret, ...rest } = data;
 
   if (authSecret) {
     const { encrypted, iv } = encrypt(authSecret);
@@ -104,6 +159,14 @@ export async function updateEndpoint(
     .where(and(eq(endpoints.id, endpointId), eq(endpoints.userId, userId)))
     .returning();
 
+  if (rest.versionCheck !== undefined || versionAuthSecret) {
+    await syncVersionSecret(endpointId, updated.versionCheck, versionAuthSecret);
+  }
+  // A changed version check config runs on the very next health check rather than waiting out N.
+  if (JSON.stringify(existing.versionCheck) !== JSON.stringify(updated.versionCheck)) {
+    await resetVersionCheckCounter(endpointId);
+  }
+
   await publishScheduleSync({
     action: 'upsert',
     endpointId: updated.id,
@@ -111,6 +174,11 @@ export async function updateEndpoint(
   });
 
   return updated;
+}
+
+export async function getEndpointVersions(userId: string, endpointId: string): Promise<VersionHistoryResponse> {
+  await getEndpoint(userId, endpointId);
+  return getVersionHistory(endpointId);
 }
 
 export async function deleteEndpoint(userId: string, endpointId: string): Promise<void> {
@@ -159,10 +227,11 @@ export async function importEndpoints(
   let updated = 0;
 
   for (const item of data) {
-    const { id, group, checkIntervalOverride, authType, ...rest } = item;
+    const { id, group, checkIntervalOverride, authType, versionCheck, ...rest } = item;
 
     const values: NewEndpoint = {
       ...rest,
+      versionCheck: mapImportedVersionCheck(versionCheck) ?? null,
       userId,
       groupName: group ?? null,
       checkInterval: checkIntervalOverride ?? 300,

@@ -10,6 +10,7 @@ struct EndpointDetailView: View {
     let endpoint: Endpoint
 
     @EnvironmentObject var historyStore: HealthHistoryStore
+    @EnvironmentObject var versionStore: VersionStore
     @Environment(\.dismiss) private var dismiss
     @State private var exportError: String?
 
@@ -23,6 +24,9 @@ struct EndpointDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     responseTimeSection
                     incidentSection
+                    if endpoint.versionCheck != nil || versionState != nil {
+                        versionSection
+                    }
                     exportSection
                 }
                 .padding()
@@ -151,6 +155,62 @@ struct EndpointDetailView: View {
         formatter.maximumUnitCount = 2
         return formatter
     }()
+
+    // MARK: - Versions
+
+    private var versionState: EndpointVersionState? { versionStore.state(for: endpoint.id) }
+
+    @ViewBuilder
+    private var versionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Versions").font(.headline)
+                if endpoint.versionCheck?.isEnabled == false {
+                    Text("Paused").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let lastResult = versionState?.lastResult {
+                if lastResult.isSuccess {
+                    Label("Last checked \(Self.dateTimeFormatter.string(from: lastResult.timestamp))",
+                          systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Failing since last check (\(Self.dateTimeFormatter.string(from: lastResult.timestamp))): \(lastResult.failureReason ?? "unknown error")",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            let history = Array((versionState?.history ?? []).reversed())
+            if history.isEmpty {
+                Text("No version observed yet").font(.caption).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(history.enumerated()), id: \.element.id) { index, entry in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(entry.value)
+                                .font(.system(.caption, design: .monospaced).weight(index == 0 ? .semibold : .regular))
+                            if index == 0 {
+                                Text("current").font(.caption2).foregroundStyle(.green)
+                            }
+                            Spacer()
+                            Text(versionRangeText(entry))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+        }
+    }
+
+    private func versionRangeText(_ entry: VersionHistoryEntry) -> String {
+        let first = Self.dateTimeFormatter.string(from: entry.firstSeenAt)
+        guard entry.lastSeenAt > entry.firstSeenAt else { return "seen \(first)" }
+        return "\(first) – \(Self.dateTimeFormatter.string(from: entry.lastSeenAt))"
+    }
 
     // MARK: - Export
 

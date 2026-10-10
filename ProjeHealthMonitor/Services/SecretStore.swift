@@ -42,3 +42,19 @@ enum SecretStore {
         ]
     }
 }
+
+/// What a form save should do to a stored secret. Blank-on-edit means "keep the existing one",
+/// since secrets are never prefilled from the Keychain.
+enum SecretUpdate: Equatable {
+    case unchanged
+    case set(String)
+    case cleared
+
+    func apply(to account: String) {
+        switch self {
+        case .set(let value): SecretStore.setSecret(value, for: account)
+        case .cleared: SecretStore.deleteSecret(for: account)
+        case .unchanged: break
+        }
+    }
+}

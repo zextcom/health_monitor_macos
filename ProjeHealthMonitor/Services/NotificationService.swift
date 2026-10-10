@@ -74,6 +74,42 @@ final class NotificationService: @unchecked Sendable {
         await post(content)
     }
 
+    func notifyVersionChanged(endpointName: String, from oldVersion: String, to newVersion: String) {
+        Task { await notifyVersionChangedAsync(endpointName: endpointName, from: oldVersion, to: newVersion) }
+    }
+
+    func notifyVersionChangedAsync(endpointName: String, from oldVersion: String, to newVersion: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) version changed"
+        content.body = "\(oldVersion) → \(newVersion)"
+        content.sound = .default
+        await post(content)
+    }
+
+    func notifyVersionCheckFailed(endpointName: String, reason: String) {
+        Task { await notifyVersionCheckFailedAsync(endpointName: endpointName, reason: reason) }
+    }
+
+    func notifyVersionCheckFailedAsync(endpointName: String, reason: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) version check failed"
+        content.body = reason
+        content.sound = .default
+        await post(content)
+    }
+
+    func notifyVersionCheckRecovered(endpointName: String) {
+        Task { await notifyVersionCheckRecoveredAsync(endpointName: endpointName) }
+    }
+
+    func notifyVersionCheckRecoveredAsync(endpointName: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) version check resolved"
+        content.body = "Version check succeeded again."
+        content.sound = .default
+        await post(content)
+    }
+
     private func post(_ content: UNMutableNotificationContent) async {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         _ = try? await center.add(request)

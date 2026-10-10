@@ -72,6 +72,8 @@ export const endpoints = pgTable(
     authUsername: text('auth_username'),
     authHeaderName: text('auth_header_name'),
     isPaused: boolean('is_paused').notNull().default(false),
+    /** Optional periodic version check against a separate URL — see `VersionCheckConfig`. */
+    versionCheck: jsonb('version_check').$type<VersionCheckConfig>(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -89,6 +91,51 @@ export const endpointSecrets = pgTable('endpoint_secrets', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Secret for the version check's own auth — kept apart from `endpoint_secrets` so the two never collide. */
+export const endpointVersionSecrets = pgTable('endpoint_version_secrets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  endpointId: uuid('endpoint_id')
+    .notNull()
+    .references(() => endpoints.id, { onDelete: 'cascade' })
+    .unique(),
+  encryptedValue: text('encrypted_value').notNull(),
+  iv: text('iv').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ── Version Checks ──
+
+/** Per-endpoint cadence counter plus the latest version check result. */
+export const endpointVersionState = pgTable('endpoint_version_state', {
+  endpointId: uuid('endpoint_id')
+    .primaryKey()
+    .references(() => endpoints.id, { onDelete: 'cascade' }),
+  /** Health checks run since the version check config last changed; drives "every N checks". */
+  checkCounter: integer('check_counter').notNull().default(0),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+  lastIsSuccess: boolean('last_is_success'),
+  lastVersion: text('last_version'),
+  lastFailureReason: text('last_failure_reason'),
+  lastStatusCode: integer('last_status_code'),
+  lastResponseTimeMs: integer('last_response_time_ms'),
+});
+
+/** Distinct versions seen over time (consecutive repeats collapse into one row). Capped per endpoint. */
+export const versionHistory = pgTable(
+  'version_history',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    endpointId: uuid('endpoint_id')
+      .notNull()
+      .references(() => endpoints.id, { onDelete: 'cascade' }),
+    value: text('value').notNull(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [index('version_history_endpoint_first_seen_idx').on(table.endpointId, table.firstSeenAt)],
+);
 
 // ── Health Checks ──
 
@@ -164,6 +211,7 @@ export const notificationPreferences = pgTable('notification_preferences', {
     .unique(),
   notifyOnDown: boolean('notify_on_down').notNull().default(true),
   notifyOnRecovery: boolean('notify_on_recovery').notNull().default(true),
+  notifyOnVersionChange: boolean('notify_on_version_change').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -176,6 +224,20 @@ export interface JsonAssertion {
   matchMode: 'exact' | 'contains' | 'regex';
 }
 
+export type AuthType = 'none' | 'bearer_token' | 'basic_auth' | 'custom_header';
+
+export interface VersionCheckConfig {
+  isEnabled: boolean;
+  url: string;
+  everyNChecks: number;
+  /** Dot-path to the version value in the JSON body, e.g. "data.version". */
+  versionFieldPath: string;
+  assertions: JsonAssertion[];
+  authType: AuthType;
+  authUsername: string | null;
+  authHeaderName: string | null;
+}
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type Endpoint = InferSelectModel<typeof endpoints>;
@@ -185,3 +247,5 @@ export type NewHealthCheckResult = InferInsertModel<typeof healthCheckResults>;
 export type DailyStat = InferSelectModel<typeof dailyStats>;
 export type Incident = InferSelectModel<typeof incidents>;
 export type RefreshToken = InferSelectModel<typeof refreshTokens>;
+export type EndpointVersionState = InferSelectModel<typeof endpointVersionState>;
+export type VersionHistoryEntry = InferSelectModel<typeof versionHistory>;

@@ -4,6 +4,7 @@ import AppKit
 struct PopoverContentView: View {
     @EnvironmentObject var endpointStore: EndpointStore
     @EnvironmentObject var historyStore: HealthHistoryStore
+    @EnvironmentObject var versionStore: VersionStore
     @EnvironmentObject var backendAuth: BackendAuthStore
     @EnvironmentObject var backendSync: BackendSyncService
     @Environment(\.openWindow) private var openWindow
@@ -38,7 +39,8 @@ struct PopoverContentView: View {
                                     groupHeader(section.title)
                                 }
                                 ForEach(section.endpoints) { endpoint in
-                                    EndpointRowView(endpoint: endpoint, results: historyStore.results(for: endpoint.id))
+                                    EndpointRowView(endpoint: endpoint, results: historyStore.results(for: endpoint.id),
+                                                    versionState: versionStore.state(for: endpoint.id))
                                     if !isLastRow(endpoint, in: section) {
                                         Divider()
                                     }

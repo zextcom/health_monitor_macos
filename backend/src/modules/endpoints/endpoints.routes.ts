@@ -16,6 +16,7 @@ import {
   resumeEndpoint,
   importEndpoints,
   exportEndpoints,
+  getEndpointVersions,
 } from './endpoints.service.js';
 
 function statusCodeForError(message: string): number {
@@ -65,6 +66,19 @@ export async function endpointRoutes(fastify: FastifyInstance) {
 
     try {
       return await getEndpoint(request.user.id, parsed.data.id);
+    } catch (error) {
+      return handleServiceError(reply, error);
+    }
+  });
+
+  fastify.get('/:id/versions', async (request, reply) => {
+    const parsed = endpointParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      return await getEndpointVersions(request.user.id, parsed.data.id);
     } catch (error) {
       return handleServiceError(reply, error);
     }

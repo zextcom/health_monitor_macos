@@ -18,6 +18,7 @@ final class HealthCheckService: ObservableObject {
     private let historyStore: HealthHistoryStore
     private let dailyStatsStore: DailyStatsStore
     private let notificationService: NotificationService
+    private let versionStore: VersionStore
     private var loopTask: Task<Void, Never>?
     private var lastCheckedAt: [UUID: Date] = [:]
 
@@ -34,12 +35,19 @@ final class HealthCheckService: ObservableObject {
     private let retainedSweepInterval: TimeInterval = 60 * 60
     private var lastRetainedSweepAt: Date?
 
+    /// Health checks performed per endpoint since its version check config last changed — drives
+    /// the "every N checks" cadence (see `shouldRunVersionCheck`). In-memory only, so a relaunch
+    /// runs the version check on the first health check again, which is what we want anyway.
+    private var versionCheckCounters: [UUID: Int] = [:]
+    private var versionCheckConfigsSeen: [UUID: VersionCheckConfig] = [:]
+
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
-         notificationService: NotificationService) {
+         notificationService: NotificationService, versionStore: VersionStore) {
         self.endpointStore = endpointStore
         self.historyStore = historyStore
         self.dailyStatsStore = dailyStatsStore
         self.notificationService = notificationService
+        self.versionStore = versionStore
     }
 
     func start() {
@@ -106,6 +114,44 @@ final class HealthCheckService: ObservableObject {
         } else if !expiringSoon {
             certWarnedFor.remove(endpoint.id)
         }
+
+        await performVersionCheckIfDue(endpoint)
+    }
+
+    /// Runs the endpoint's version check on every `everyNChecks`-th health check (including the
+    /// first one after the config is set or changed) and dispatches any resulting notifications.
+    /// Deliberately independent of the health result — never touches history/stats/overall status.
+    private func performVersionCheckIfDue(_ endpoint: Endpoint) async {
+        guard let config = endpoint.versionCheck, config.isEnabled else {
+            versionCheckCounters.removeValue(forKey: endpoint.id)
+            versionCheckConfigsSeen.removeValue(forKey: endpoint.id)
+            return
+        }
+        if versionCheckConfigsSeen[endpoint.id] != config {
+            versionCheckConfigsSeen[endpoint.id] = config
+            versionCheckCounters[endpoint.id] = 0
+        }
+        let count = (versionCheckCounters[endpoint.id] ?? 0) + 1
+        versionCheckCounters[endpoint.id] = count
+        guard Self.shouldRunVersionCheck(checkCount: count, everyN: config.everyNChecks) else { return }
+
+        let secret = SecretStore.secret(for: VersionCheckConfig.secretAccount(for: endpoint.id))
+        let result = await Self.executeVersionCheck(config: config, timeout: endpointStore.requestTimeout, secret: secret)
+        let events = versionStore.record(result, for: endpoint.id)
+        let toNotify = Self.versionEventsToNotify(events, notificationsEnabled: endpointStore.notificationsEnabled,
+                                                  notifyOnRecovery: endpointStore.notifyOnRecovery,
+                                                  notifyOnVersionChange: endpointStore.notifyOnVersionChange,
+                                                  isSnoozed: Self.isSnoozed(endpoint))
+        for event in toNotify {
+            switch event {
+            case .changed(let from, let to):
+                notificationService.notifyVersionChanged(endpointName: endpoint.name, from: from, to: to)
+            case .failed(let reason):
+                notificationService.notifyVersionCheckFailed(endpointName: endpoint.name, reason: reason)
+            case .recovered:
+                notificationService.notifyVersionCheckRecovered(endpointName: endpoint.name)
+            }
+        }
     }
 
     /// Returns the endpoint's cached certificate expiry, refreshing it first if it's stale or
@@ -139,6 +185,7 @@ final class HealthCheckService: ObservableObject {
         where Self.isRetainedRecordExpired(deletedAt: record.deletedAt, now: now) {
             historyStore.removeHistory(for: record.id)
             dailyStatsStore.removeStats(for: record.id)
+            versionStore.removeState(for: record.id)
             endpointStore.removeRetainedEndpointRecord(id: record.id)
         }
     }
@@ -267,6 +314,72 @@ final class HealthCheckService: ObservableObject {
         return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: result.success,
                                   responseTimeMs: result.elapsedMs, statusCode: nil,
                                   failureReason: result.success ? nil : (result.errorMessage ?? "Connection failed"))
+    }
+
+    // MARK: - Version check
+
+    /// `checkCount` is 1-based (the health check that just ran). Runs on the 1st, (N+1)th,
+    /// (2N+1)th… check, so a newly configured version check doesn't wait N checks for its first
+    /// value. `everyN` below 1 is treated as 1.
+    nonisolated static func shouldRunVersionCheck(checkCount: Int, everyN: Int) -> Bool {
+        guard checkCount >= 1 else { return false }
+        return (checkCount - 1) % max(1, everyN) == 0
+    }
+
+    /// Applies the user's notification settings to the transitions `VersionStore` reported.
+    /// Changes have their own toggle; failure/resolved mirror down/recovered for health checks.
+    nonisolated static func versionEventsToNotify(_ events: [VersionCheckEvent], notificationsEnabled: Bool,
+                                                  notifyOnRecovery: Bool, notifyOnVersionChange: Bool,
+                                                  isSnoozed: Bool) -> [VersionCheckEvent] {
+        guard notificationsEnabled, !isSnoozed else { return [] }
+        return events.filter { event in
+            switch event {
+            case .changed: return notifyOnVersionChange
+            case .failed: return true
+            case .recovered: return notifyOnRecovery
+            }
+        }
+    }
+
+    /// Pure, like `executeCheck`: any 2xx, a JSON body, a readable `versionFieldPath`, and every
+    /// assertion passing. The version is still reported when an assertion fails afterwards.
+    nonisolated static func executeVersionCheck(config: VersionCheckConfig, timeout: TimeInterval, secret: String? = nil,
+                                                session: URLSession = .shared) async -> VersionCheckResult {
+        let headers = authHeaders(type: config.authType, username: config.authUsername, secret: secret,
+                                  headerName: config.authHeaderName)
+        switch await performRequest(url: config.url, timeout: timeout, headers: headers, session: session) {
+        case .failure(let error):
+            return VersionCheckResult(timestamp: Date(), isSuccess: false, version: nil, failureReason: error.displayMessage,
+                                      responseTimeMs: error.elapsedMs, statusCode: nil)
+        case .success(let raw):
+            return evaluateVersionResponse(raw, config: config)
+        }
+    }
+
+    /// The response-evaluation half of `executeVersionCheck`, split out so the form's "Test"
+    /// button can evaluate the same response it also lists JSON fields from, without a second request.
+    nonisolated static func evaluateVersionResponse(_ raw: RawFetchResult, config: VersionCheckConfig,
+                                                    now: Date = Date()) -> VersionCheckResult {
+        func failure(_ reason: String, version: String? = nil) -> VersionCheckResult {
+            VersionCheckResult(timestamp: now, isSuccess: false, version: version, failureReason: reason,
+                               responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode)
+        }
+        guard (200...299).contains(raw.statusCode) else {
+            return failure("Expected 2xx, got \(raw.statusCode)")
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: raw.data) else {
+            return failure("Could not parse JSON")
+        }
+        let path = config.versionFieldPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let version = extractValue(from: json, path: path) else {
+            return failure("Version field \"\(path)\" not found")
+        }
+        let (passed, reason) = evaluateAssertions(json: json, assertions: config.assertions)
+        guard passed else {
+            return failure(reason ?? "Assertion failed", version: version)
+        }
+        return VersionCheckResult(timestamp: now, isSuccess: true, version: version, failureReason: nil,
+                                  responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode)
     }
 
     // MARK: - JSON path resolution / discovery

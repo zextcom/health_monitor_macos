@@ -80,6 +80,20 @@ struct JSONAssertion: Codable, Identifiable, Equatable {
         matchMode = try container.decodeIfPresent(MatchMode.self, forKey: .matchMode) ?? .exact
     }
 
+    /// Trims every row and drops fully blank ones. Returns `nil` if any row is half-filled (path
+    /// without value or vice versa) — callers surface that as a validation error.
+    static func cleaned(_ assertions: [JSONAssertion]) -> [JSONAssertion]? {
+        var result: [JSONAssertion] = []
+        for assertion in assertions {
+            let path = assertion.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = assertion.expectedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.isEmpty, value.isEmpty { continue }
+            guard !path.isEmpty, !value.isEmpty else { return nil }
+            result.append(JSONAssertion(id: assertion.id, path: path, expectedValue: value, matchMode: assertion.matchMode))
+        }
+        return result
+    }
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -123,10 +137,14 @@ struct Endpoint: Codable, Identifiable, Equatable {
     /// (`GroupBadgeStyle`), also never persisted.
     var group: String?
 
+    /// Optional periodic version check against a separate URL — see `VersionCheckConfig`. `nil`
+    /// means never configured; a disabled-but-kept config is `isEnabled == false`.
+    var versionCheck: VersionCheckConfig?
+
     init(id: UUID = UUID(), name: String, url: URL, checkType: CheckType = .http, expectedStatusCode: Int = 200,
          checkIntervalOverride: TimeInterval? = nil, snoozedUntil: Date? = nil, jsonAssertions: [JSONAssertion] = [],
          authType: AuthType = .none, authUsername: String? = nil, authHeaderName: String? = nil,
-         group: String? = nil) {
+         group: String? = nil, versionCheck: VersionCheckConfig? = nil) {
         self.id = id
         self.name = name
         self.url = url
@@ -139,6 +157,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         self.authUsername = authUsername
         self.authHeaderName = authHeaderName
         self.group = group
+        self.versionCheck = versionCheck
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -147,6 +166,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         case jsonFieldPath, expectedFieldValue // legacy single-assertion schema, decode-only
         case authType, authUsername, authHeaderName
         case group
+        case versionCheck
     }
 
     init(from decoder: Decoder) throws {
@@ -162,6 +182,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         authUsername = try container.decodeIfPresent(String.self, forKey: .authUsername)
         authHeaderName = try container.decodeIfPresent(String.self, forKey: .authHeaderName)
         group = try container.decodeIfPresent(String.self, forKey: .group)
+        versionCheck = try container.decodeIfPresent(VersionCheckConfig.self, forKey: .versionCheck)
 
         if let assertions = try container.decodeIfPresent([JSONAssertion].self, forKey: .jsonAssertions) {
             jsonAssertions = assertions
@@ -187,6 +208,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(authUsername, forKey: .authUsername)
         try container.encodeIfPresent(authHeaderName, forKey: .authHeaderName)
         try container.encodeIfPresent(group, forKey: .group)
+        try container.encodeIfPresent(versionCheck, forKey: .versionCheck)
     }
 }
 

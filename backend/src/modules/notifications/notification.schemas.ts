@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const updatePreferencesSchema = z.object({
   notifyOnDown: z.boolean().optional(),
   notifyOnRecovery: z.boolean().optional(),
+  notifyOnVersionChange: z.boolean().optional(),
 });
 
 export const createSubscriptionSchema = z.object({

@@ -8,15 +8,33 @@ export interface NotificationPayload {
   data?: Record<string, string>;
 }
 
-export async function shouldNotify(userId: string, isDown: boolean): Promise<boolean> {
+export type NotificationType =
+  | 'down'
+  | 'recovery'
+  | 'version_change'
+  | 'version_failed'
+  | 'version_recovered';
+
+type PreferenceKey = 'notifyOnDown' | 'notifyOnRecovery' | 'notifyOnVersionChange';
+
+/**
+ * Which user preference gates each notification type. Version check failure/resolved follow
+ * down/recovery (same as the macOS app); version changes have their own toggle.
+ */
+export const preferenceForNotificationType: Record<NotificationType, PreferenceKey> = {
+  down: 'notifyOnDown',
+  recovery: 'notifyOnRecovery',
+  version_change: 'notifyOnVersionChange',
+  version_failed: 'notifyOnDown',
+  version_recovered: 'notifyOnRecovery',
+};
+
+export async function shouldNotify(userId: string, type: NotificationType): Promise<boolean> {
   const preferences = await db.query.notificationPreferences.findFirst({
     where: eq(notificationPreferences.userId, userId),
   });
 
-  const notifyOnDown = preferences?.notifyOnDown ?? true;
-  const notifyOnRecovery = preferences?.notifyOnRecovery ?? true;
-
-  return isDown ? notifyOnDown : notifyOnRecovery;
+  return preferences?.[preferenceForNotificationType[type]] ?? true;
 }
 
 export async function getUserPushTokens(
@@ -62,9 +80,12 @@ export async function sendNotification(
   userId: string,
   payload: NotificationPayload,
 ): Promise<void> {
-  const isDown = payload.data?.type === 'down';
+  // Unknown/missing types fall back to the recovery preference, as non-'down' payloads always did.
+  const rawType = payload.data?.type;
+  const type: NotificationType =
+    rawType && rawType in preferenceForNotificationType ? (rawType as NotificationType) : 'recovery';
 
-  const notify = await shouldNotify(userId, isDown);
+  const notify = await shouldNotify(userId, type);
   if (!notify) {
     return;
   }
@@ -113,4 +134,43 @@ export async function notifyEndpointRecovered(endpointId: string): Promise<void>
     body: `${endpoint.name} is back online.`,
     data: { endpointId, type: 'recovery' },
   });
+}
+
+async function notifyForEndpoint(
+  endpointId: string,
+  build: (endpointName: string) => NotificationPayload,
+): Promise<void> {
+  const endpoint = await db.query.endpoints.findFirst({
+    where: eq(endpoints.id, endpointId),
+  });
+
+  if (!endpoint) {
+    return;
+  }
+
+  await sendNotification(endpoint.userId, build(endpoint.name));
+}
+
+export async function notifyVersionChanged(endpointId: string, from: string, to: string): Promise<void> {
+  await notifyForEndpoint(endpointId, (name) => ({
+    title: '🔄 Version Changed',
+    body: `${name}: ${from} → ${to}`,
+    data: { endpointId, type: 'version_change' },
+  }));
+}
+
+export async function notifyVersionCheckFailed(endpointId: string, reason: string): Promise<void> {
+  await notifyForEndpoint(endpointId, (name) => ({
+    title: '⚠️ Version Check Failed',
+    body: `${name}: ${reason}`,
+    data: { endpointId, type: 'version_failed' },
+  }));
+}
+
+export async function notifyVersionCheckRecovered(endpointId: string): Promise<void> {
+  await notifyForEndpoint(endpointId, (name) => ({
+    title: '✅ Version Check Resolved',
+    body: `${name} version check succeeded again.`,
+    data: { endpointId, type: 'version_recovered' },
+  }));
 }
