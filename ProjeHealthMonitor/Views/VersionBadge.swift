@@ -10,7 +10,9 @@ struct VersionBadge: View {
 
     /// Prefixes a bare "1.5.0" with "v" but leaves "v1.5.0"/"V2" or non-numeric values (commit
     /// hashes, "main-abc123") alone. Truncates very long values (e.g. full SHAs) to keep rows tidy.
-    static func displayText(for version: String, maxLength: Int = 14) -> String {
+    /// `nonisolated`: `View` is `@MainActor` on older SDKs, which would otherwise make this pure
+    /// helper main-actor-bound too.
+    nonisolated static func displayText(for version: String, maxLength: Int = 14) -> String {
         let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
         let prefixed = trimmed.first?.isNumber == true ? "v\(trimmed)" : trimmed
         guard prefixed.count > maxLength else { return prefixed }

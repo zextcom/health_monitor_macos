@@ -220,11 +220,13 @@ final class VersionCheckSchedulingTests: XCTestCase {
 
 @MainActor
 final class VersionStoreTests: XCTestCase {
-    private var tempDirectory: URL!
+    /// A `nonisolated let` (not a `var` assigned in `setUp`): XCTest's `setUp`/`tearDown` are
+    /// nonisolated, and older SDKs (the CI runner's) reject touching main-actor state from them.
+    private nonisolated let tempDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
 
     override func setUp() {
         super.setUp()
-        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
     }
 
