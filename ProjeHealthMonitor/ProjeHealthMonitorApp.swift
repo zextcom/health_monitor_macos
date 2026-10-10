@@ -35,6 +35,7 @@ struct ProjeHealthMonitorApp: App {
     @StateObject private var endpointStore: EndpointStore
     @StateObject private var historyStore: HealthHistoryStore
     @StateObject private var dailyStatsStore: DailyStatsStore
+    @StateObject private var versionStore: VersionStore
     @StateObject private var healthCheckService: HealthCheckService
     @StateObject private var updaterViewModel: UpdaterViewModel
     @StateObject private var backendAuth: BackendAuthStore
@@ -44,12 +45,14 @@ struct ProjeHealthMonitorApp: App {
         let endpointStore: EndpointStore
         let historyStore: HealthHistoryStore
         let dailyStatsStore: DailyStatsStore
+        let versionStore: VersionStore
         if let isolatedStores = Self.makeIsolatedStoresForUITesting() {
-            (endpointStore, historyStore, dailyStatsStore) = isolatedStores
+            (endpointStore, historyStore, dailyStatsStore, versionStore) = isolatedStores
         } else {
             endpointStore = EndpointStore()
             historyStore = HealthHistoryStore()
             dailyStatsStore = DailyStatsStore()
+            versionStore = VersionStore()
         }
         let backendAuth = BackendAuthStore()
         let backendSync = BackendSyncService(backendAuth: backendAuth)
@@ -61,12 +64,14 @@ struct ProjeHealthMonitorApp: App {
             endpointStore: endpointStore,
             historyStore: historyStore,
             dailyStatsStore: dailyStatsStore,
-            notificationService: notificationService
+            notificationService: notificationService,
+            versionStore: versionStore
         )
 
         _endpointStore = StateObject(wrappedValue: endpointStore)
         _historyStore = StateObject(wrappedValue: historyStore)
         _dailyStatsStore = StateObject(wrappedValue: dailyStatsStore)
+        _versionStore = StateObject(wrappedValue: versionStore)
         _healthCheckService = StateObject(wrappedValue: healthCheckService)
         _updaterViewModel = StateObject(wrappedValue: UpdaterViewModel())
 
@@ -103,7 +108,7 @@ struct ProjeHealthMonitorApp: App {
 
     /// UI tests pass `-UITestMode` so each run gets its own throwaway `UserDefaults` suite and
     /// history/stats files, rather than reading and writing the real installed app's data.
-    private static func makeIsolatedStoresForUITesting() -> (EndpointStore, HealthHistoryStore, DailyStatsStore)? {
+    private static func makeIsolatedStoresForUITesting() -> (EndpointStore, HealthHistoryStore, DailyStatsStore, VersionStore)? {
         guard ProcessInfo.processInfo.arguments.contains("-UITestMode") else { return nil }
         let runID = UUID().uuidString
         let defaults = UserDefaults(suiteName: "UITests.\(runID)") ?? .standard
@@ -112,7 +117,8 @@ struct ProjeHealthMonitorApp: App {
         return (
             EndpointStore(defaults: defaults),
             HealthHistoryStore(fileURL: tempDirectory.appendingPathComponent("history.json")),
-            DailyStatsStore(fileURL: tempDirectory.appendingPathComponent("dailyStats.json"))
+            DailyStatsStore(fileURL: tempDirectory.appendingPathComponent("dailyStats.json")),
+            VersionStore(fileURL: tempDirectory.appendingPathComponent("versions.json"))
         )
     }
 
@@ -121,6 +127,7 @@ struct ProjeHealthMonitorApp: App {
             PopoverContentView()
                 .environmentObject(endpointStore)
                 .environmentObject(historyStore)
+                .environmentObject(versionStore)
                 .environmentObject(backendAuth)
                 .environmentObject(backendSync)
         } label: {
@@ -136,6 +143,7 @@ struct ProjeHealthMonitorApp: App {
                 .environmentObject(endpointStore)
                 .environmentObject(historyStore)
                 .environmentObject(dailyStatsStore)
+                .environmentObject(versionStore)
                 .environmentObject(updaterViewModel)
                 .environmentObject(backendAuth)
                 .environmentObject(backendSync)

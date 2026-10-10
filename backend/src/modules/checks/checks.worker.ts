@@ -14,9 +14,14 @@ import {
   incidents,
 } from '../../db/schema.js';
 import type { Endpoint, JsonAssertion } from '../../db/schema.js';
+import { buildAuthHeaders, getByPath, matchesAssertion } from './check-helpers.js';
+import { runVersionCheckIfDue } from './version-check.js';
 import { decrypt } from '../../utils/crypto.js';
 import { REDIS_CHANNEL, type CheckResultEvent } from '../sse/sse-bus.js';
 import { notifyEndpointDown, notifyEndpointRecovered } from '../notifications/notification.service.js';
+
+// Re-exported so existing imports (and tests) of these helpers from the worker keep working.
+export { buildAuthHeaders, getByPath, matchesAssertion };
 
 export const QUEUE_NAME = 'health-checks';
 
@@ -42,53 +47,6 @@ const publisher = new IORedis(env.REDIS_URL);
 const checkQueue = new Queue<CheckJobData>(QUEUE_NAME, { connection });
 
 let worker: Worker<CheckJobData> | undefined;
-
-export function buildAuthHeaders(endpoint: Endpoint, secret: string | null): Record<string, string> {
-  if (!secret) {
-    return {};
-  }
-
-  switch (endpoint.authType) {
-    case 'bearer_token':
-      return { Authorization: `Bearer ${secret}` };
-    case 'basic_auth': {
-      const credentials = Buffer.from(`${endpoint.authUsername ?? ''}:${secret}`).toString('base64');
-      return { Authorization: `Basic ${credentials}` };
-    }
-    case 'custom_header':
-      return endpoint.authHeaderName ? { [endpoint.authHeaderName]: secret } : {};
-    default:
-      return {};
-  }
-}
-
-export function getByPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((acc, key) => {
-    if (acc && typeof acc === 'object' && key in (acc as Record<string, unknown>)) {
-      return (acc as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, obj);
-}
-
-export function matchesAssertion(
-  value: unknown,
-  expectedValue: string,
-  matchMode: JsonAssertion['matchMode'],
-): boolean {
-  const stringValue = value === undefined || value === null ? '' : String(value);
-
-  switch (matchMode) {
-    case 'exact':
-      return stringValue === expectedValue;
-    case 'contains':
-      return stringValue.includes(expectedValue);
-    case 'regex':
-      return new RegExp(expectedValue).test(stringValue);
-    default:
-      return false;
-  }
-}
 
 async function checkJsonAssertions(
   response: Response,
@@ -331,9 +289,10 @@ export async function manageIncidents(
 
 async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
   const { endpointId } = job.data;
+  let endpoint: Endpoint | undefined;
 
   try {
-    const endpoint = await db.query.endpoints.findFirst({
+    endpoint = await db.query.endpoints.findFirst({
       where: eq(endpoints.id, endpointId),
     });
 
@@ -383,6 +342,14 @@ async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
     }
   } catch (error) {
     console.error(`Health check processing failed for endpoint ${endpointId}:`, error);
+    return;
+  }
+
+  // Separate try so a version check problem can never be mistaken for (or mask) a health failure.
+  try {
+    await runVersionCheckIfDue(endpoint);
+  } catch (error) {
+    console.error(`Version check processing failed for endpoint ${endpointId}:`, error);
   }
 }
 

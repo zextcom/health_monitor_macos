@@ -18,6 +18,7 @@ final class EndpointStore: ObservableObject {
         static let globalCheckInterval = "globalCheckInterval"
         static let notificationsEnabled = "notificationsEnabled"
         static let notifyOnRecovery = "notifyOnRecovery"
+        static let notifyOnVersionChange = "notifyOnVersionChange"
         static let launchAtLoginEnabled = "launchAtLoginEnabled"
         static let requestTimeout = "requestTimeout"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
@@ -39,6 +40,11 @@ final class EndpointStore: ObservableObject {
     }
     @Published var notifyOnRecovery: Bool {
         didSet { defaults.set(notifyOnRecovery, forKey: Keys.notifyOnRecovery) }
+    }
+    /// Gates only the "version changed" notification — version check failure/resolved
+    /// notifications follow `notificationsEnabled`/`notifyOnRecovery` like health checks do.
+    @Published var notifyOnVersionChange: Bool {
+        didSet { defaults.set(notifyOnVersionChange, forKey: Keys.notifyOnVersionChange) }
     }
     @Published var launchAtLoginEnabled: Bool {
         didSet { defaults.set(launchAtLoginEnabled, forKey: Keys.launchAtLoginEnabled) }
@@ -90,6 +96,7 @@ final class EndpointStore: ObservableObject {
 
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.notifyOnRecovery = defaults.object(forKey: Keys.notifyOnRecovery) as? Bool ?? true
+        self.notifyOnVersionChange = defaults.object(forKey: Keys.notifyOnVersionChange) as? Bool ?? true
         self.launchAtLoginEnabled = defaults.object(forKey: Keys.launchAtLoginEnabled) as? Bool ?? false
 
         let storedTimeout = defaults.double(forKey: Keys.requestTimeout)

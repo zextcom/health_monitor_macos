@@ -44,6 +44,15 @@ struct ActiveIncidentInfo: Codable, Sendable {
     let failureReason: String?
 }
 
+/// Backend's latest version check state for an endpoint (see backend `versionSummary`).
+struct DashboardVersionInfo: Codable, Sendable {
+    let isEnabled: Bool
+    let current: String?
+    let isFailing: Bool
+    let failureReason: String?
+    let lastCheckedAt: String?
+}
+
 struct DashboardEndpointInfo: Codable, Identifiable, Sendable {
     let id: String
     let name: String
@@ -54,6 +63,8 @@ struct DashboardEndpointInfo: Codable, Identifiable, Sendable {
     let latestCheck: LatestCheckInfo?
     let uptimePercent24h: Double?
     let activeIncident: ActiveIncidentInfo?
+    /// Optional so dashboards from a backend predating version checks still decode.
+    let version: DashboardVersionInfo?
 }
 
 struct DashboardResponse: Codable, Sendable {

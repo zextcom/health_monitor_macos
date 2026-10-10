@@ -52,6 +52,9 @@ struct BackendEndpointRowView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if let version = endpoint.version, version.isEnabled {
+                    VersionBadge(version: version.current, isFailing: version.isFailing, failureReason: version.failureReason)
+                }
                 if let incident = endpoint.activeIncident {
                     Label(incident.failureReason ?? "Incident active", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)

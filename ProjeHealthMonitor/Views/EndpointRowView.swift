@@ -42,6 +42,7 @@ struct GroupBadge: View {
 struct EndpointRowView: View {
     let endpoint: Endpoint
     let results: [HealthCheckResult]
+    var versionState: EndpointVersionState? = nil
     @EnvironmentObject var endpointStore: EndpointStore
 
     private static let certWarningThresholdDays = 14
@@ -87,6 +88,10 @@ struct EndpointRowView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if endpoint.versionCheck?.isEnabled == true, let versionState {
+                    VersionBadge(version: versionState.currentVersion, isFailing: versionState.isFailing,
+                                 failureReason: versionState.lastResult?.failureReason)
+                }
                 if let certWarningText {
                     Label(certWarningText, systemImage: "lock.trianglebadge.exclamationmark.fill")
                         .font(.caption2)

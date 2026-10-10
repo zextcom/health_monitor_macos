@@ -22,6 +22,7 @@ function baseEndpoint(overrides: Partial<Endpoint> = {}): Endpoint {
     authUsername: null,
     authHeaderName: null,
     isPaused: false,
+    versionCheck: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

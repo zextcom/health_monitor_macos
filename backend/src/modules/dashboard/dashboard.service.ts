@@ -1,6 +1,14 @@
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { dailyStats, endpoints, healthCheckResults, incidents } from '../../db/schema.js';
+import {
+  dailyStats,
+  endpoints,
+  endpointVersionState,
+  healthCheckResults,
+  incidents,
+  type Endpoint,
+  type EndpointVersionState,
+} from '../../db/schema.js';
 
 export interface DashboardEndpoint {
   id: string;
@@ -22,6 +30,14 @@ export interface DashboardEndpoint {
     startedAt: string;
     failureReason: string | null;
   } | null;
+  /** `null` when the endpoint has no version check configured. */
+  version: {
+    isEnabled: boolean;
+    current: string | null;
+    isFailing: boolean;
+    failureReason: string | null;
+    lastCheckedAt: string | null;
+  } | null;
 }
 
 export interface DashboardResponse {
@@ -33,6 +49,23 @@ export interface DashboardResponse {
     overallUptimePercent: number;
   };
   endpoints: DashboardEndpoint[];
+}
+
+export function versionSummary(
+  endpoint: Pick<Endpoint, 'versionCheck'>,
+  state: EndpointVersionState | undefined,
+): DashboardEndpoint['version'] {
+  if (!endpoint.versionCheck) {
+    return null;
+  }
+  const isFailing = state?.lastIsSuccess === false;
+  return {
+    isEnabled: endpoint.versionCheck.isEnabled,
+    current: state?.lastVersion ?? null,
+    isFailing,
+    failureReason: isFailing ? (state?.lastFailureReason ?? null) : null,
+    lastCheckedAt: state?.lastCheckedAt ? state.lastCheckedAt.toISOString() : null,
+  };
 }
 
 function emptyDashboard(): DashboardResponse {
@@ -61,7 +94,7 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
   since.setDate(since.getDate() - 1);
   const sinceStr = since.toISOString().slice(0, 10);
 
-  const [latestChecks, activeIncidents, statsRows] = await Promise.all([
+  const [latestChecks, activeIncidents, statsRows, versionStates] = await Promise.all([
     db
       .selectDistinctOn([healthCheckResults.endpointId])
       .from(healthCheckResults)
@@ -75,7 +108,10 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
       .select()
       .from(dailyStats)
       .where(and(inArray(dailyStats.endpointId, endpointIds), gte(dailyStats.date, sinceStr))),
+    db.select().from(endpointVersionState).where(inArray(endpointVersionState.endpointId, endpointIds)),
   ]);
+
+  const versionStateByEndpoint = new Map(versionStates.map((state) => [state.endpointId, state]));
 
   const latestCheckByEndpoint = new Map<string, (typeof latestChecks)[number]>();
   for (const check of latestChecks) {
@@ -154,6 +190,7 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
             failureReason: activeIncident.failureReason,
           }
         : null,
+      version: versionSummary(endpoint, versionStateByEndpoint.get(endpoint.id)),
     };
   });
 

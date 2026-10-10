@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var endpointStore: EndpointStore
     @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var dailyStatsStore: DailyStatsStore
+    @EnvironmentObject var versionStore: VersionStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @EnvironmentObject var backendAuth: BackendAuthStore
     @EnvironmentObject var backendSync: BackendSyncService
@@ -53,12 +54,9 @@ struct SettingsView: View {
         .frame(width: 480, height: 420)
         .sheet(isPresented: $isPresentingForm) {
             EndpointFormView(endpoint: editingEndpoint) { result in
-                if case .save(let endpoint, let secretUpdate) = result {
-                    switch secretUpdate {
-                    case .set(let value): SecretStore.setSecret(value, for: endpoint.id.uuidString)
-                    case .cleared: SecretStore.deleteSecret(for: endpoint.id.uuidString)
-                    case .unchanged: break
-                    }
+                if case .save(let endpoint, let secretUpdate, let versionSecretUpdate) = result {
+                    secretUpdate.apply(to: endpoint.id.uuidString)
+                    versionSecretUpdate.apply(to: VersionCheckConfig.secretAccount(for: endpoint.id))
                     if endpointStore.endpoints.contains(where: { $0.id == endpoint.id }) {
                         endpointStore.updateEndpoint(endpoint)
                     } else {
@@ -190,9 +188,11 @@ struct SettingsView: View {
         for endpoint in pendingDeletion {
             endpointStore.removeEndpoint(id: endpoint.id, retainData: retainData)
             SecretStore.deleteSecret(for: endpoint.id.uuidString)
+            SecretStore.deleteSecret(for: VersionCheckConfig.secretAccount(for: endpoint.id))
             if !retainData {
                 historyStore.removeHistory(for: endpoint.id)
                 dailyStatsStore.removeStats(for: endpoint.id)
+                versionStore.removeState(for: endpoint.id)
             }
         }
         pendingDeletion = []
@@ -419,6 +419,8 @@ struct SettingsView: View {
             Section {
                 Toggle("Notify when down", isOn: $endpointStore.notificationsEnabled)
                 Toggle("Notify when recovered", isOn: $endpointStore.notifyOnRecovery)
+                    .disabled(!endpointStore.notificationsEnabled)
+                Toggle("Notify on version change", isOn: $endpointStore.notifyOnVersionChange)
                     .disabled(!endpointStore.notificationsEnabled)
             } header: {
                 Label("Notifications", systemImage: "bell")
