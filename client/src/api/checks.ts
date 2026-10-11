@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import type { HealthStatus } from './endpoints';
 
 export interface HealthCheckResult {
   id: string;
@@ -9,6 +10,8 @@ export interface HealthCheckResult {
   statusCode: number | null;
   failureReason: string | null;
   certificateExpiresAt: string | null;
+  /** Health-standard `status` ('warn' = degraded); `null` for non-standard endpoints. */
+  healthStatus?: HealthStatus | null;
 }
 
 export interface DailyStat {
