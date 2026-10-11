@@ -4,8 +4,9 @@ import Security
 
 @MainActor
 final class HealthCheckService: ObservableObject {
+    /// Menu bar status: `down` beats `degraded` beats `healthy`.
     enum OverallStatus {
-        case unknown, healthy, down
+        case unknown, healthy, degraded, down
     }
 
     @Published private(set) var overallStatus: OverallStatus = .unknown
@@ -19,6 +20,7 @@ final class HealthCheckService: ObservableObject {
     private let dailyStatsStore: DailyStatsStore
     private let notificationService: NotificationService
     private let versionStore: VersionStore
+    private let healthDetailsStore: HealthDetailsStore
     private var loopTask: Task<Void, Never>?
     private var lastCheckedAt: [UUID: Date] = [:]
 
@@ -42,12 +44,13 @@ final class HealthCheckService: ObservableObject {
     private var versionCheckConfigsSeen: [UUID: VersionCheckConfig] = [:]
 
     init(endpointStore: EndpointStore, historyStore: HealthHistoryStore, dailyStatsStore: DailyStatsStore,
-         notificationService: NotificationService, versionStore: VersionStore) {
+         notificationService: NotificationService, versionStore: VersionStore, healthDetailsStore: HealthDetailsStore) {
         self.endpointStore = endpointStore
         self.historyStore = historyStore
         self.dailyStatsStore = dailyStatsStore
         self.notificationService = notificationService
         self.versionStore = versionStore
+        self.healthDetailsStore = healthDetailsStore
     }
 
     func start() {
@@ -87,21 +90,32 @@ final class HealthCheckService: ObservableObject {
     private func performCheck(_ endpoint: Endpoint) async {
         let previousResult = historyStore.lastResult(for: endpoint.id)
         let secret = SecretStore.secret(for: endpoint.id.uuidString)
-        var result = await Self.executeCheck(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
+        let outcome = await Self.executeCheckDetailed(endpoint: endpoint, timeout: endpointStore.requestTimeout, secret: secret)
+        var result = outcome.result
         result.certificateExpiresAt = await refreshedCertificateExpiry(for: endpoint)
         historyStore.record(result, retentionDays: endpointStore.historyRetentionDays)
+        // Degraded counts as up for daily stats and uptime.
         dailyStatsStore.record(endpointId: endpoint.id, timestamp: result.timestamp, isHealthy: result.isHealthy,
                                 intervalSeconds: endpoint.checkIntervalOverride ?? endpointStore.globalCheckInterval)
 
-        let wasHealthy = previousResult?.isHealthy
-        if wasHealthy == true, !result.isHealthy {
-            if endpointStore.notificationsEnabled, !Self.isSnoozed(endpoint) {
-                notificationService.notifyDown(endpointName: endpoint.name, reason: result.failureReason)
+        if let transition = Self.healthTransition(previous: previousResult, current: result),
+           Self.shouldNotify(transition, notificationsEnabled: endpointStore.notificationsEnabled,
+                             notifyOnRecovery: endpointStore.notifyOnRecovery, isSnoozed: Self.isSnoozed(endpoint)) {
+            switch transition {
+            case .down(let reason):
+                notificationService.notifyDown(endpointName: endpoint.name, reason: reason)
+            case .recovered(let degradedReason):
+                notificationService.notifyRecovered(endpointName: endpoint.name, degradedReason: degradedReason)
+            case .degraded(let reason):
+                notificationService.notifyDegraded(endpointName: endpoint.name, reason: reason)
+            case .noLongerDegraded:
+                notificationService.notifyNoLongerDegraded(endpointName: endpoint.name)
             }
-        } else if wasHealthy == false, result.isHealthy {
-            if endpointStore.notificationsEnabled, endpointStore.notifyOnRecovery, !Self.isSnoozed(endpoint) {
-                notificationService.notifyRecovered(endpointName: endpoint.name)
-            }
+        }
+
+        if endpoint.healthStandard, let response = outcome.standardResponse {
+            healthDetailsStore.record(response, for: endpoint.id, at: result.timestamp)
+            recordAutoVersion(response, result: result, for: endpoint)
         }
 
         let expiringSoon = Self.isExpiringSoon(result.certificateExpiresAt, thresholdDays: certExpiryWarningDays)
@@ -137,7 +151,20 @@ final class HealthCheckService: ObservableObject {
 
         let secret = SecretStore.secret(for: VersionCheckConfig.secretAccount(for: endpoint.id))
         let result = await Self.executeVersionCheck(config: config, timeout: endpointStore.requestTimeout, secret: secret)
-        let events = versionStore.record(result, for: endpoint.id)
+        dispatchVersionEvents(versionStore.record(result, for: endpoint.id), for: endpoint)
+    }
+
+    /// Health-standard endpoints without an explicit, enabled version check track the version from
+    /// the health response itself (no extra request) — see `HealthStandard.trackedVersion`.
+    private func recordAutoVersion(_ response: HealthStandardResponse, result: HealthCheckResult, for endpoint: Endpoint) {
+        guard Self.usesAutoVersion(endpoint),
+              let value = HealthStandard.trackedVersion(version: response.version, releaseId: response.releaseId) else { return }
+        let versionResult = VersionCheckResult(timestamp: result.timestamp, isSuccess: true, version: value, failureReason: nil,
+                                               responseTimeMs: result.responseTimeMs, statusCode: result.statusCode)
+        dispatchVersionEvents(versionStore.record(versionResult, for: endpoint.id), for: endpoint)
+    }
+
+    private func dispatchVersionEvents(_ events: [VersionCheckEvent], for endpoint: Endpoint) {
         let toNotify = Self.versionEventsToNotify(events, notificationsEnabled: endpointStore.notificationsEnabled,
                                                   notifyOnRecovery: endpointStore.notifyOnRecovery,
                                                   notifyOnVersionChange: endpointStore.notifyOnVersionChange,
@@ -191,18 +218,57 @@ final class HealthCheckService: ObservableObject {
     }
 
     private func updateOverallStatus() {
-        guard !endpointStore.endpoints.isEmpty else {
-            overallStatus = .unknown
-            return
+        overallStatus = Self.overallStatus(lastResults: endpointStore.endpoints.map { historyStore.lastResult(for: $0.id) })
+    }
+
+    /// `nil` entries are endpoints without a result yet. Any down → `.down`, else any degraded →
+    /// `.degraded`, else `.healthy`; `.unknown` when nothing has been checked.
+    nonisolated static func overallStatus(lastResults: [HealthCheckResult?]) -> OverallStatus {
+        let results = lastResults.compactMap { $0 }
+        guard !results.isEmpty else { return .unknown }
+        if results.contains(where: { !$0.isHealthy }) { return .down }
+        if results.contains(where: { $0.isDegraded }) { return .degraded }
+        return .healthy
+    }
+
+    // MARK: - Health transitions
+
+    /// Transition between two consecutive results worth notifying about. No previous result means
+    /// no transition (the first check never notifies). Down/recovered behave as before; degraded
+    /// adds healthy → degraded and degraded → healthy. Degraded → down is a plain `.down`, and
+    /// down → degraded is a single `.recovered` carrying the degraded reason.
+    nonisolated static func healthTransition(previous: HealthCheckResult?, current: HealthCheckResult) -> HealthTransition? {
+        guard let previous else { return nil }
+        switch (EndpointHealthState(previous), EndpointHealthState(current)) {
+        case (.healthy, .down), (.degraded, .down):
+            return .down(reason: current.failureReason)
+        case (.down, .healthy):
+            return .recovered(degradedReason: nil)
+        case (.down, .degraded):
+            return .recovered(degradedReason: current.failureReason ?? "Degraded")
+        case (.healthy, .degraded):
+            return .degraded(reason: current.failureReason)
+        case (.degraded, .healthy):
+            return .noLongerDegraded
+        default:
+            return nil
         }
-        var sawResult = false
-        var allHealthy = true
-        for endpoint in endpointStore.endpoints {
-            guard let last = historyStore.lastResult(for: endpoint.id) else { continue }
-            sawResult = true
-            if !last.isHealthy { allHealthy = false }
+    }
+
+    /// Down and degraded follow "notifications enabled"; recovered and no-longer-degraded also need
+    /// "notify on recovery". Snooze suppresses everything.
+    nonisolated static func shouldNotify(_ transition: HealthTransition, notificationsEnabled: Bool, notifyOnRecovery: Bool,
+                                         isSnoozed: Bool) -> Bool {
+        guard notificationsEnabled, !isSnoozed else { return false }
+        switch transition {
+        case .down, .degraded: return true
+        case .recovered, .noLongerDegraded: return notifyOnRecovery
         }
-        overallStatus = sawResult ? (allHealthy ? .healthy : .down) : .unknown
+    }
+
+    /// Auto version tracking applies to health-standard endpoints without an enabled version check.
+    nonisolated static func usesAutoVersion(_ endpoint: Endpoint) -> Bool {
+        endpoint.healthStandard && endpoint.checkType == .http && endpoint.versionCheck?.isEnabled != true
     }
 
     // MARK: - Raw networking (no actor-isolated state touched here beyond value types)
@@ -211,6 +277,8 @@ final class HealthCheckService: ObservableObject {
         let statusCode: Int
         let data: Data
         let elapsedMs: Int
+        /// `Content-Type` response header — used to spot health-standard responses in the form.
+        var contentType: String? = nil
     }
 
     enum RawFetchError: Error {
@@ -255,7 +323,8 @@ final class HealthCheckService: ObservableObject {
             guard let httpResponse = response as? HTTPURLResponse else {
                 return .failure(.invalidResponse(elapsedMs: elapsedMs))
             }
-            return .success(RawFetchResult(statusCode: httpResponse.statusCode, data: data, elapsedMs: elapsedMs))
+            return .success(RawFetchResult(statusCode: httpResponse.statusCode, data: data, elapsedMs: elapsedMs,
+                                           contentType: httpResponse.value(forHTTPHeaderField: "Content-Type")))
         } catch {
             let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
             if (error as? URLError)?.code == .timedOut {
@@ -270,37 +339,64 @@ final class HealthCheckService: ObservableObject {
     /// during "Test Connection") — kept as a plain parameter rather than an internal Keychain lookup
     /// so this stays a pure, easily testable function.
     nonisolated static func executeCheck(endpoint: Endpoint, timeout: TimeInterval, secret: String? = nil, session: URLSession = .shared) async -> HealthCheckResult {
+        await executeCheckDetailed(endpoint: endpoint, timeout: timeout, secret: secret, session: session).result
+    }
+
+    struct CheckOutcome {
+        let result: HealthCheckResult
+        /// Parsed body for health-standard endpoints when it could be read (components, version).
+        let standardResponse: HealthStandardResponse?
+    }
+
+    /// `executeCheck` plus the parsed health-standard body, which `performCheck` needs for the
+    /// Components section and auto version tracking.
+    nonisolated static func executeCheckDetailed(endpoint: Endpoint, timeout: TimeInterval, secret: String? = nil,
+                                                 session: URLSession = .shared) async -> CheckOutcome {
         if endpoint.checkType == .tcp {
-            return await executeTCPCheck(endpoint: endpoint, timeout: timeout)
+            return CheckOutcome(result: await executeTCPCheck(endpoint: endpoint, timeout: timeout), standardResponse: nil)
         }
 
         let headers = authHeaders(type: endpoint.authType, username: endpoint.authUsername, secret: secret, headerName: endpoint.authHeaderName)
         switch await performRequest(url: endpoint.url, timeout: timeout, headers: headers, session: session) {
         case .failure(let error):
-            return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                      responseTimeMs: error.elapsedMs, statusCode: nil, failureReason: error.displayMessage)
+            let result = HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
+                                           responseTimeMs: error.elapsedMs, statusCode: nil, failureReason: error.displayMessage)
+            return CheckOutcome(result: result, standardResponse: nil)
         case .success(let raw):
-            guard raw.statusCode == endpoint.expectedStatusCode else {
-                return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                          responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode,
-                                          failureReason: "Expected status \(endpoint.expectedStatusCode), got \(raw.statusCode)")
+            guard endpoint.healthStandard else {
+                return CheckOutcome(result: evaluateStatusAndAssertions(raw, endpoint: endpoint), standardResponse: nil)
             }
-
-            if !endpoint.jsonAssertions.isEmpty {
-                guard let json = try? JSONSerialization.jsonObject(with: raw.data) else {
-                    return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                              responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: "Could not parse JSON")
-                }
-                let (passed, reason) = evaluateAssertions(json: json, assertions: endpoint.jsonAssertions)
-                guard passed else {
-                    return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
-                                              responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: reason)
-                }
-            }
-
-            return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: true,
-                                      responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: nil)
+            // expectedStatusCode is ignored: the standard defines 200 (pass/warn) and 503 (fail).
+            let evaluation = HealthStandard.evaluate(statusCode: raw.statusCode, data: raw.data, assertions: endpoint.jsonAssertions)
+            let result = HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: evaluation.isHealthy,
+                                           responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode,
+                                           failureReason: evaluation.failureReason, isDegraded: evaluation.isDegraded)
+            return CheckOutcome(result: result, standardResponse: evaluation.response)
         }
+    }
+
+    /// Expected-status-code + JSON-assertion evaluation for endpoints that don't use the health standard.
+    private nonisolated static func evaluateStatusAndAssertions(_ raw: RawFetchResult, endpoint: Endpoint) -> HealthCheckResult {
+        guard raw.statusCode == endpoint.expectedStatusCode else {
+            return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
+                                      responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode,
+                                      failureReason: "Expected status \(endpoint.expectedStatusCode), got \(raw.statusCode)")
+        }
+
+        if !endpoint.jsonAssertions.isEmpty {
+            guard let json = try? JSONSerialization.jsonObject(with: raw.data) else {
+                return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
+                                          responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: "Could not parse JSON")
+            }
+            let (passed, reason) = evaluateAssertions(json: json, assertions: endpoint.jsonAssertions)
+            guard passed else {
+                return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: false,
+                                          responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: reason)
+            }
+        }
+
+        return HealthCheckResult(endpointId: endpoint.id, timestamp: Date(), isHealthy: true,
+                                  responseTimeMs: raw.elapsedMs, statusCode: raw.statusCode, failureReason: nil)
     }
 
     /// `.tcp` endpoints store their target as `endpoint.url` in `tcp://host:port` form (see

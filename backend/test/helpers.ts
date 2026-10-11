@@ -1,11 +1,11 @@
-import { buildApp } from '../src/app.js';
+import { buildApp, type BuildAppOptions } from '../src/app.js';
 import { db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 import { stopSSESubscriber } from '../src/modules/sse/sse-bus.js';
 import type { FastifyInstance } from 'fastify';
 
-export async function createApp(): Promise<FastifyInstance> {
-  const app = await buildApp();
+export async function createApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  const app = await buildApp(options);
   await app.ready();
 
   // @fastify/rate-limit keys buckets by remote IP, and light-my-request's
@@ -39,7 +39,7 @@ export async function closeApp(app: FastifyInstance): Promise<void> {
 
 export async function cleanDb(): Promise<void> {
   await db.execute(
-    sql`TRUNCATE users, endpoints, health_check_results, daily_stats, incidents, refresh_tokens, invitations, endpoint_secrets, push_subscriptions, notification_preferences CASCADE`,
+    sql`TRUNCATE users, endpoints, health_check_results, endpoint_health_state, daily_stats, incidents, refresh_tokens, invitations, endpoint_secrets, push_subscriptions, notification_preferences CASCADE`,
   );
 }
 

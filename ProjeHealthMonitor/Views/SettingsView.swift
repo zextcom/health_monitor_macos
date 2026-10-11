@@ -9,6 +9,7 @@ struct SettingsView: View {
     @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var dailyStatsStore: DailyStatsStore
     @EnvironmentObject var versionStore: VersionStore
+    @EnvironmentObject var healthDetailsStore: HealthDetailsStore
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @EnvironmentObject var backendAuth: BackendAuthStore
     @EnvironmentObject var backendSync: BackendSyncService
@@ -189,6 +190,7 @@ struct SettingsView: View {
             endpointStore.removeEndpoint(id: endpoint.id, retainData: retainData)
             SecretStore.deleteSecret(for: endpoint.id.uuidString)
             SecretStore.deleteSecret(for: VersionCheckConfig.secretAccount(for: endpoint.id))
+            healthDetailsStore.remove(for: endpoint.id)
             if !retainData {
                 historyStore.removeHistory(for: endpoint.id)
                 dailyStatsStore.removeStats(for: endpoint.id)
@@ -524,6 +526,7 @@ struct SettingsView: View {
         .sheet(item: $selectedEndpointForDetail) { endpoint in
             EndpointDetailView(endpoint: endpoint)
                 .environmentObject(historyStore)
+                .environmentObject(healthDetailsStore)
         }
     }
 

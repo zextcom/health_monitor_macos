@@ -11,6 +11,7 @@ struct EndpointDetailView: View {
 
     @EnvironmentObject var historyStore: HealthHistoryStore
     @EnvironmentObject var versionStore: VersionStore
+    @EnvironmentObject var healthDetailsStore: HealthDetailsStore
     @Environment(\.dismiss) private var dismiss
     @State private var exportError: String?
 
@@ -23,6 +24,9 @@ struct EndpointDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     responseTimeSection
+                    if endpoint.healthStandard {
+                        componentsSection
+                    }
                     incidentSection
                     if endpoint.versionCheck != nil || versionState != nil {
                         versionSection
@@ -69,15 +73,25 @@ struct EndpointDetailView: View {
                         y: .value("Response time (ms)", result.responseTimeMs ?? 0)
                     )
                     .foregroundStyle(.secondary)
+                    // Symbol shape as well as color per state: circle healthy, triangle degraded, square down.
                     PointMark(
                         x: .value("Time", result.timestamp),
                         y: .value("Response time (ms)", result.responseTimeMs ?? 0)
                     )
-                    .foregroundStyle(result.isHealthy ? Color.green : Color.red)
+                    .foregroundStyle(EndpointHealthState(result).color)
+                    .symbol(pointSymbol(for: result))
                 }
                 .frame(height: 160)
                 .accessibilityLabel(responseTimeSummary)
             }
+        }
+    }
+
+    private func pointSymbol(for result: HealthCheckResult) -> BasicChartSymbolShape {
+        switch EndpointHealthState(result) {
+        case .healthy: return .circle
+        case .degraded: return .triangle
+        case .down: return .square
         }
     }
 
@@ -87,7 +101,74 @@ struct EndpointDetailView: View {
             return "No response time data"
         }
         let average = values.reduce(0, +) / values.count
-        return "Response time over \(values.count) checks: minimum \(minValue) ms, average \(average) ms, maximum \(maxValue) ms"
+        let degradedCount = chartableResults.filter(\.isDegraded).count
+        let degradedPart = degradedCount > 0 ? ", \(degradedCount) degraded" : ""
+        return "Response time over \(values.count) checks: minimum \(minValue) ms, average \(average) ms, maximum \(maxValue) ms\(degradedPart)"
+    }
+
+    // MARK: - Components (health standard)
+
+    private var healthDetails: HealthDetailsStore.Entry? { healthDetailsStore.details(for: endpoint.id) }
+
+    @ViewBuilder
+    private var componentsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Components").font(.headline)
+            if let healthDetails {
+                let response = healthDetails.response
+                HStack(spacing: 6) {
+                    Image(systemName: response.status.symbolName)
+                        .foregroundStyle(response.status.color)
+                        .accessibilityHidden(true)
+                    Text("Reported \(response.status.rawValue)")
+                        .font(.caption.bold())
+                    if let reason = HealthStandard.reason(for: response) {
+                        Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    Text("as of \(Self.timeOnlyFormatter.string(from: healthDetails.checkedAt))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                if response.components.isEmpty {
+                    Text("The service reports no component checks").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(response.components) { component in
+                            componentRow(component)
+                        }
+                    }
+                }
+            } else {
+                Text("No health-standard response read yet").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func componentRow(_ component: HealthComponentCheck) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: component.status.symbolName)
+                .foregroundStyle(component.status.color)
+                .font(.caption)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(component.componentId.map { "\(component.key) (\($0))" } ?? component.key)
+                    .font(.system(.caption, design: .monospaced))
+                if let output = component.output {
+                    Text(output).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let observed = component.observedText {
+                Text(observed)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([component.key, component.status.rawValue, component.observedText, component.output]
+            .compactMap { $0 }.joined(separator: ", "))
     }
 
     // MARK: - Incidents
@@ -165,7 +246,9 @@ struct EndpointDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Versions").font(.headline)
-                if endpoint.versionCheck?.isEnabled == false {
+                if HealthCheckService.usesAutoVersion(endpoint) {
+                    Text("From health response").font(.caption).foregroundStyle(.secondary)
+                } else if endpoint.versionCheck?.isEnabled == false {
                     Text("Paused").font(.caption).foregroundStyle(.secondary)
                 }
             }

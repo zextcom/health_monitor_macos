@@ -187,6 +187,7 @@ describe('versionSummary()', () => {
       isFailing: false,
       failureReason: null,
       lastCheckedAt: null,
+      source: 'versionCheck',
     });
   });
 
@@ -197,6 +198,22 @@ describe('versionSummary()', () => {
       isFailing: true,
       failureReason: 'Timed out',
       lastCheckedAt: '2026-10-01T10:00:00.000Z',
+      source: 'versionCheck',
     });
+  });
+
+  it('auto-tracks via the health standard when no explicit version check is enabled', () => {
+    const auto = {
+      isEnabled: true,
+      current: '1.2.3',
+      isFailing: false,
+      failureReason: null,
+      lastCheckedAt: '2026-10-01T10:00:00.000Z',
+      source: 'healthStandard',
+    };
+    expect(versionSummary({ versionCheck: null, healthStandard: true }, state)).toEqual(auto);
+    expect(versionSummary({ versionCheck: { ...baseConfig, isEnabled: false }, healthStandard: true }, state)).toEqual(auto);
+    expect(versionSummary({ versionCheck: baseConfig, healthStandard: true }, state)?.source).toBe('versionCheck');
+    expect(versionSummary({ versionCheck: null, healthStandard: false }, state)).toBeNull();
   });
 });

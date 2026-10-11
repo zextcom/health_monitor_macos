@@ -11,6 +11,8 @@ export interface CheckResultEvent {
   responseTimeMs: number | null;
   statusCode: number | null;
   failureReason: string | null;
+  /** Health-standard `status` ('pass' | 'warn' | 'fail'), `null` for other endpoints. */
+  healthStatus: 'pass' | 'warn' | 'fail' | null;
   timestamp: string;
 }
 

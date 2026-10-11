@@ -3,7 +3,7 @@ import tls from 'node:tls';
 import { Worker, Queue } from 'bullmq';
 import type { Job } from 'bullmq';
 import { Redis as IORedis } from 'ioredis';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
 import {
@@ -13,9 +13,18 @@ import {
   dailyStats,
   incidents,
 } from '../../db/schema.js';
-import type { Endpoint, JsonAssertion } from '../../db/schema.js';
-import { buildAuthHeaders, getByPath, matchesAssertion } from './check-helpers.js';
+import type { Endpoint, HealthStatus, JsonAssertion } from '../../db/schema.js';
+import { buildAuthHeaders, evaluateAssertions, getByPath, matchesAssertion } from './check-helpers.js';
 import { runVersionCheckIfDue } from './version-check.js';
+import {
+  degradedTransition,
+  evaluateStandardHttpCheck,
+  healthStateOf,
+  notifyDegradedTransition,
+  recordAutoVersion,
+  recordHealthDetails,
+} from './health-standard-check.js';
+import type { ParsedHealthResponse } from '../standards/health-standard.js';
 import { decrypt } from '../../utils/crypto.js';
 import { REDIS_CHANNEL, type CheckResultEvent } from '../sse/sse-bus.js';
 import { notifyEndpointDown, notifyEndpointRecovered } from '../notifications/notification.service.js';
@@ -35,6 +44,10 @@ interface CheckOutcome {
   statusCode: number | null;
   failureReason: string | null;
   certificateExpiresAt: Date | null;
+  /** Health-standard endpoints only: the body's `status` when it could be read. */
+  healthStatus?: HealthStatus | null;
+  /** Health-standard endpoints only: the parsed body (components, version) when readable. */
+  standard?: ParsedHealthResponse | null;
 }
 
 const HTTP_TIMEOUT_MS = 30_000;
@@ -59,17 +72,7 @@ async function checkJsonAssertions(
     return { passed: false, reason: 'Response body is not valid JSON' };
   }
 
-  for (const assertion of assertions) {
-    const value = getByPath(body, assertion.path);
-    if (!matchesAssertion(value, assertion.expectedValue, assertion.matchMode)) {
-      return {
-        passed: false,
-        reason: `Assertion failed: "${assertion.path}" did not match "${assertion.expectedValue}"`,
-      };
-    }
-  }
-
-  return { passed: true, reason: null };
+  return evaluateAssertions(body, assertions);
 }
 
 function getCertificateExpiry(urlString: string): Promise<Date | null> {
@@ -114,8 +117,28 @@ async function performHttpCheck(endpoint: Endpoint, secret: string | null): Prom
   try {
     const headers = buildAuthHeaders(endpoint, secret);
     const response = await fetch(endpoint.url, { signal: controller.signal, headers });
-    const responseTimeMs = Math.round(performance.now() - start);
     const statusCode = response.status;
+
+    if (endpoint.healthStandard) {
+      // expectedStatusCode is ignored: the standard defines 200 (pass/warn) and 503 (fail).
+      const bodyText = await response.text();
+      const responseTimeMs = Math.round(performance.now() - start);
+      const evaluation = evaluateStandardHttpCheck(endpoint, statusCode, bodyText);
+      const certificateExpiresAt = endpoint.url.startsWith('https://')
+        ? await getCertificateExpiry(endpoint.url)
+        : null;
+      return {
+        isHealthy: evaluation.isHealthy,
+        responseTimeMs,
+        statusCode,
+        failureReason: evaluation.failureReason,
+        certificateExpiresAt,
+        healthStatus: evaluation.healthStatus,
+        standard: evaluation.parsed,
+      };
+    }
+
+    const responseTimeMs = Math.round(performance.now() - start);
 
     let isHealthy = statusCode === endpoint.expectedStatusCode;
     let failureReason: string | null = isHealthy
@@ -288,8 +311,14 @@ export async function manageIncidents(
 }
 
 async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
-  const { endpointId } = job.data;
+  await runCheckForEndpoint(job.data.endpointId);
+}
+
+/** One full check of `endpointId`: run, persist, publish, stats, incidents, notifications, follow-ups. */
+export async function runCheckForEndpoint(endpointId: string): Promise<void> {
   let endpoint: Endpoint | undefined;
+  let outcome: CheckOutcome;
+  let previousResult: { isHealthy: boolean; healthStatus: HealthStatus | null } | undefined;
 
   try {
     endpoint = await db.query.endpoints.findFirst({
@@ -310,7 +339,13 @@ async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
       }
     }
 
-    const outcome = await runCheck(endpoint, secret);
+    outcome = await runCheck(endpoint, secret);
+
+    previousResult = await db.query.healthCheckResults.findFirst({
+      where: eq(healthCheckResults.endpointId, endpointId),
+      orderBy: [desc(healthCheckResults.timestamp)],
+      columns: { isHealthy: true, healthStatus: true },
+    });
 
     await db.insert(healthCheckResults).values({
       endpointId,
@@ -319,6 +354,7 @@ async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
       statusCode: outcome.statusCode,
       failureReason: outcome.failureReason,
       certificateExpiresAt: outcome.certificateExpiresAt,
+      healthStatus: outcome.healthStatus ?? null,
     });
 
     const sseEvent: CheckResultEvent = {
@@ -328,21 +364,39 @@ async function processCheckJob(job: Job<CheckJobData>): Promise<void> {
       responseTimeMs: outcome.responseTimeMs,
       statusCode: outcome.statusCode,
       failureReason: outcome.failureReason,
+      healthStatus: outcome.healthStatus ?? null,
       timestamp: new Date().toISOString(),
     };
     await publisher.publish(REDIS_CHANNEL, JSON.stringify(sseEvent));
 
+    // Degraded (healthy + warn) counts as up for daily stats and incidents.
     await updateDailyStats(endpointId, outcome.isHealthy, endpoint.checkInterval);
 
+    const currentState = healthStateOf({ isHealthy: outcome.isHealthy, healthStatus: outcome.healthStatus ?? null });
     const incidentAction = await manageIncidents(endpointId, outcome.isHealthy, outcome.failureReason);
     if (incidentAction === 'opened') {
       await notifyEndpointDown(endpointId, outcome.failureReason);
     } else if (incidentAction === 'closed') {
-      await notifyEndpointRecovered(endpointId);
+      // down → degraded: a single "recovered" notification, worded as degraded.
+      await notifyEndpointRecovered(endpointId, currentState === 'degraded' ? outcome.failureReason : undefined);
     }
+
+    const previousState = previousResult ? healthStateOf(previousResult) : null;
+    await notifyDegradedTransition(endpointId, degradedTransition(previousState, currentState), outcome.failureReason);
   } catch (error) {
     console.error(`Health check processing failed for endpoint ${endpointId}:`, error);
     return;
+  }
+
+  // Separate try, like the version check below: storing components or the auto-tracked version
+  // must never alter the health result that was already recorded.
+  if (endpoint.healthStandard && outcome.standard) {
+    try {
+      await recordHealthDetails(endpointId, outcome.standard);
+      await recordAutoVersion(endpoint, outcome.standard, outcome.statusCode, outcome.responseTimeMs);
+    } catch (error) {
+      console.error(`Health standard processing failed for endpoint ${endpointId}:`, error);
+    }
   }
 
   // Separate try so a version check problem can never be mistaken for (or mask) a health failure.

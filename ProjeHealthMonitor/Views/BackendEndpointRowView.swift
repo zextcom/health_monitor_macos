@@ -36,7 +36,7 @@ struct BackendEndpointRowView: View {
             if let check = endpoint.latestCheck, let ms = check.responseTimeMs {
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(check.isHealthy ? Color.green : Color.red)
+                        .fill(check.healthState.color)
                         .frame(width: min(CGFloat(ms) / 5.0, 200), height: 4)
                     Text("\(ms)ms")
                         .font(.caption2)
@@ -52,6 +52,12 @@ struct BackendEndpointRowView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if let check = endpoint.latestCheck, check.healthState == .degraded {
+                    Label("Degraded", systemImage: EndpointHealthState.degraded.symbolName)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .help(check.failureReason ?? "The service reports a warning")
+                }
                 if let version = endpoint.version, version.isEnabled {
                     VersionBadge(version: version.current, isFailing: version.isFailing, failureReason: version.failureReason)
                 }
@@ -73,13 +79,14 @@ struct BackendEndpointRowView: View {
     private var dotColor: Color {
         if endpoint.isPaused { return .gray }
         guard let check = endpoint.latestCheck else { return .gray }
-        return check.isHealthy ? .green : .red
+        return check.healthState.color
     }
 
+    /// Shape differs per status (healthy / degraded / down), not just color.
     private var statusSymbolName: String {
         if endpoint.isPaused { return "pause.circle" }
         guard let check = endpoint.latestCheck else { return "circle.dotted" }
-        return check.isHealthy ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+        return check.healthState.symbolName
     }
 
     private var lastCheckedText: String {

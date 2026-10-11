@@ -23,6 +23,7 @@ struct EndpointFormView: View {
     @State private var useCustomInterval: Bool
     @State private var customInterval: String
     @State private var assertions: [JSONAssertion]
+    @State private var healthStandard: Bool
     @State private var errorMessage: String?
 
     @State private var authType: AuthType
@@ -48,6 +49,10 @@ struct EndpointFormView: View {
     @State private var testCertificateExpiresAt: Date?
     /// Set only for `.tcp` test runs — `nil` while `.http` or before any test has run.
     @State private var testTCPConnected: Bool?
+    /// Last HTTP test response read as a health-standard response, plus whether it looks like one
+    /// (dedicated media type or a top-level pass/warn/fail `status`).
+    @State private var testStandardEvaluation: HealthStandard.Evaluation?
+    @State private var testLooksStandard = false
 
     @State private var isAdvancedExpanded: Bool
     @State private var versionDraft: VersionCheckDraft
@@ -65,6 +70,7 @@ struct EndpointFormView: View {
         _useCustomInterval = State(initialValue: endpoint?.checkIntervalOverride != nil)
         _customInterval = State(initialValue: endpoint?.checkIntervalOverride.map { String(Int($0)) } ?? "")
         _assertions = State(initialValue: endpoint?.jsonAssertions ?? [])
+        _healthStandard = State(initialValue: endpoint?.healthStandard ?? false)
         _authType = State(initialValue: endpoint?.authType ?? .none)
         _authUsername = State(initialValue: endpoint?.authUsername ?? "")
         _authHeaderName = State(initialValue: endpoint?.authHeaderName ?? "")
@@ -97,7 +103,15 @@ struct EndpointFormView: View {
                         .accessibilityIdentifier("EndpointURLField")
                     retainedMatchBanner
                     if checkType == .http {
-                        TextField("Expected HTTP status code", text: $expectedStatusCode)
+                        Toggle("Uses Zext Health Standard", isOn: $healthStandard)
+                            .accessibilityIdentifier("HealthStandardToggle")
+                        Text("Reads pass / warn / fail from the JSON status (HTTP 200 or 503) instead of a status code; warn shows as degraded, and version and components come from the same response.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !healthStandard {
+                            TextField("Expected HTTP status code", text: $expectedStatusCode)
+                                .accessibilityIdentifier("ExpectedStatusCodeField")
+                        }
                     }
                 } header: {
                     Label("Details", systemImage: "info.circle")
@@ -547,6 +561,10 @@ struct EndpointFormView: View {
                     .foregroundStyle(certificateStatusColor(for: testCertificateExpiresAt))
             }
 
+            if testErrorMessage == nil {
+                standardTestContent
+            }
+
             if let testErrorMessage {
                 Text(testErrorMessage)
                     .font(.caption)
@@ -591,6 +609,31 @@ struct EndpointFormView: View {
                     }
                 }
                 .frame(maxHeight: 180)
+            }
+        }
+    }
+
+    /// Health-standard reading of the last test response: shown when the toggle is on, or when the
+    /// response looks standard — then with a button to turn the toggle on.
+    @ViewBuilder
+    private var standardTestContent: some View {
+        if let evaluation = testStandardEvaluation, testLooksStandard || healthStandard {
+            let status = evaluation.response?.status
+            Label(HealthStandard.testSummary(evaluation), systemImage: status?.symbolName ?? "xmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(status?.color ?? .red)
+                .lineLimit(3)
+                .accessibilityIdentifier("HealthStandardTestResult")
+            if testLooksStandard, !healthStandard {
+                HStack {
+                    Text("This looks like a Zext Health Standard response.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Use Health Standard") { healthStandard = true }
+                        .controlSize(.small)
+                        .accessibilityIdentifier("UseHealthStandardButton")
+                    Spacer()
+                }
             }
         }
     }
@@ -648,6 +691,8 @@ struct EndpointFormView: View {
                 testIsJSON = false
                 testFlattenedFields = []
             }
+            testLooksStandard = HealthStandard.looksStandard(contentType: raw.contentType, json: testJSON)
+            testStandardEvaluation = HealthStandard.evaluate(statusCode: raw.statusCode, data: raw.data)
             if url.scheme?.lowercased() == "https", let host = url.host {
                 testCertificateExpiresAt = await HealthCheckService.fetchCertificateExpiry(
                     host: host, port: UInt16(url.port ?? 443), timeout: Self.testTimeout)
@@ -658,6 +703,8 @@ struct EndpointFormView: View {
             testJSON = nil
             testIsJSON = false
             testFlattenedFields = []
+            testLooksStandard = false
+            testStandardEvaluation = nil
             testErrorMessage = error.displayMessage
         }
     }
@@ -738,6 +785,7 @@ struct EndpointFormView: View {
         // TCP checks don't use status code / JSON assertions / auth — those are HTTP-only, so
         // saving as .tcp clears them rather than leaving stale HTTP config silently persisted.
         if checkType == .tcp {
+            endpoint.healthStandard = false
             endpoint.jsonAssertions = []
             endpoint.authType = .none
             endpoint.authUsername = nil
@@ -748,7 +796,14 @@ struct EndpointFormView: View {
             return
         }
 
-        guard let statusCode = Int(expectedStatusCode) else {
+        // The expected status code is hidden (and ignored) for health-standard endpoints, so an
+        // unparsable leftover value there must not block saving — keep the previous one instead.
+        let statusCode: Int
+        if let parsed = Int(expectedStatusCode.trimmingCharacters(in: .whitespaces)) {
+            statusCode = parsed
+        } else if healthStandard {
+            statusCode = originalEndpoint?.expectedStatusCode ?? 200
+        } else {
             errorMessage = "Status code must be a number"
             return
         }
@@ -776,6 +831,7 @@ struct EndpointFormView: View {
         }
 
         endpoint.expectedStatusCode = statusCode
+        endpoint.healthStandard = healthStandard
         endpoint.jsonAssertions = cleanedAssertions
         endpoint.authType = authType
         endpoint.authUsername = authType == .basicAuth ? authUsername.trimmingCharacters(in: .whitespacesAndNewlines) : nil

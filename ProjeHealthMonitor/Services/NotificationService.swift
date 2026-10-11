@@ -48,14 +48,45 @@ final class NotificationService: @unchecked Sendable {
         await post(content)
     }
 
-    func notifyRecovered(endpointName: String) {
-        Task { await notifyRecoveredAsync(endpointName: endpointName) }
+    /// `degradedReason` is set when a health-standard endpoint came back as `warn` — down → degraded
+    /// sends only this one notification, worded as degraded.
+    func notifyRecovered(endpointName: String, degradedReason: String? = nil) {
+        Task { await notifyRecoveredAsync(endpointName: endpointName, degradedReason: degradedReason) }
     }
 
-    func notifyRecoveredAsync(endpointName: String) async {
+    func notifyRecoveredAsync(endpointName: String, degradedReason: String? = nil) async {
         let content = UNMutableNotificationContent()
-        content.title = "\(endpointName) is back up"
-        content.body = "Health check succeeded again."
+        if let degradedReason {
+            content.title = "\(endpointName) is back up, but degraded"
+            content.body = degradedReason
+        } else {
+            content.title = "\(endpointName) is back up"
+            content.body = "Health check succeeded again."
+        }
+        content.sound = .default
+        await post(content)
+    }
+
+    func notifyDegraded(endpointName: String, reason: String?) {
+        Task { await notifyDegradedAsync(endpointName: endpointName, reason: reason) }
+    }
+
+    func notifyDegradedAsync(endpointName: String, reason: String?) async {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) degraded"
+        content.body = reason ?? "The service reports a warning."
+        content.sound = .default
+        await post(content)
+    }
+
+    func notifyNoLongerDegraded(endpointName: String) {
+        Task { await notifyNoLongerDegradedAsync(endpointName: endpointName) }
+    }
+
+    func notifyNoLongerDegradedAsync(endpointName: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = "\(endpointName) is healthy again"
+        content.body = "No longer degraded."
         content.sound = .default
         await post(content)
     }

@@ -11,6 +11,7 @@ import {
 import { encrypt } from '../../utils/crypto.js';
 import { publishScheduleSync } from '../checks/schedule-sync.js';
 import { getVersionHistory, resetVersionCheckCounter, type VersionHistoryResponse } from '../checks/version-check.js';
+import { getHealthDetails, type HealthDetails } from '../checks/health-standard-check.js';
 import type {
   CreateEndpointInput,
   UpdateEndpointInput,
@@ -179,6 +180,20 @@ export async function updateEndpoint(
 export async function getEndpointVersions(userId: string, endpointId: string): Promise<VersionHistoryResponse> {
   await getEndpoint(userId, endpointId);
   return getVersionHistory(endpointId);
+}
+
+export interface EndpointHealthDetailsResponse {
+  healthStandard: boolean;
+  /** Latest parsed health-standard response (status, version, components), `null` until one is seen. */
+  latest: HealthDetails | null;
+}
+
+export async function getEndpointHealthDetails(
+  userId: string,
+  endpointId: string,
+): Promise<EndpointHealthDetailsResponse> {
+  const endpoint = await getEndpoint(userId, endpointId);
+  return { healthStandard: endpoint.healthStandard, latest: await getHealthDetails(endpointId) };
 }
 
 export async function deleteEndpoint(userId: string, endpointId: string): Promise<void> {

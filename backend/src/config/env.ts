@@ -11,6 +11,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  /** Deploy identifier reported as `releaseId` by GET /health; falls back to the git SHA. */
+  RELEASE_ID: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
