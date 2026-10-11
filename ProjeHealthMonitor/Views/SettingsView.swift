@@ -243,6 +243,7 @@ struct SettingsView: View {
                 name: endpoint.name,
                 group: endpoint.group,
                 isHealthy: results.last?.isHealthy,
+                isDegraded: results.last?.isDegraded ?? false,
                 uptimePercentage: HealthCheckService.uptimePercentage(results: results),
                 lastCheckedAt: results.last?.timestamp,
                 isSnoozed: HealthCheckService.isSnoozed(endpoint)

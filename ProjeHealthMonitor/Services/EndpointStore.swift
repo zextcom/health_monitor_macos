@@ -202,6 +202,7 @@ final class EndpointStore: ObservableObject {
                 name: endpoint.name,
                 url: endpoint.url.absoluteString,
                 isHealthy: lastResult?.isHealthy ?? true,
+                isDegraded: lastResult?.isDegraded ?? false,
                 responseTimeMs: lastResult?.responseTimeMs,
                 lastCheckedAt: lastResult?.timestamp,
                 group: endpoint.group
