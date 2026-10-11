@@ -1,0 +1,59 @@
+name: Notarize app
+description: >
+  Submits a signed .app to Apple's notary service and waits for the verdict, dumping the
+  detailed log on rejection. Shared by release.yml (which then staples) and ci.yml's
+  release-build check on main (which only needs the verdict).
+
+inputs:
+  app-path:
+    description: Path of the signed .app bundle.
+    required: true
+  api-key-p8-base64:
+    description: App Store Connect API key (.p8), base64.
+    required: true
+  staple:
+    description: Staple the ticket to the app after acceptance.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Notarize app
+      shell: bash
+      env:
+        API_KEY_P8_BASE64: ${{ inputs.api-key-p8-base64 }}
+        APP_PATH: ${{ inputs.app-path }}
+        STAPLE: ${{ inputs.staple }}
+      run: |
+        KEY_PATH="$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
+        echo "$API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+
+        SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"
+        ditto -c -k --keepParent "$APP_PATH" "$SUBMISSION_ZIP"
+
+        set +e
+        NOTARIZE_OUTPUT=$(xcrun notarytool submit "$SUBMISSION_ZIP" \
+          --key "$KEY_PATH" \
+          --key-id VBR3NDQ4H4 \
+          --issuer b27895dd-3a15-45ff-8789-e9358970f6a0 \
+          --wait 2>&1)
+        NOTARIZE_STATUS=$?
+        echo "$NOTARIZE_OUTPUT"
+        set -e
+
+        SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep -m1 '^  id:' | awk '{print $2}')
+        if [ $NOTARIZE_STATUS -ne 0 ] || echo "$NOTARIZE_OUTPUT" | grep -q "status: Invalid"; then
+          echo "Notarization failed or was rejected — fetching the detailed log:"
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --key "$KEY_PATH" \
+            --key-id VBR3NDQ4H4 \
+            --issuer b27895dd-3a15-45ff-8789-e9358970f6a0
+          rm "$KEY_PATH" "$SUBMISSION_ZIP"
+          exit 1
+        fi
+
+        if [ "$STAPLE" = "true" ]; then
+          xcrun stapler staple "$APP_PATH"
+        fi
+        rm "$KEY_PATH" "$SUBMISSION_ZIP"

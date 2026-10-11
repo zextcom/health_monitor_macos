@@ -38,100 +38,24 @@ jobs:
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -derivedDataPath build
 
-      # Standard GitHub-documented pattern for signing with a real Developer ID cert on a
-      # hosted runner: decode the .p12 into a keychain scoped to this job only, and make it
-      # the default so xcodebuild finds the identity without any other config.
-      - name: Import Developer ID certificate
-        env:
-          P12_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
-          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          CERT_PATH="$RUNNER_TEMP/developer_id.p12"
+      # Certificate import, Release build, Sparkle re-signing and verification live in a
+      # composite action shared with ci.yml's release-build check, so every PR exercises the
+      # exact signing path a release uses.
+      - name: Build and sign
+        id: build
+        uses: ./.github/actions/build-signed-app
+        with:
+          p12-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          marketing-version: ${{ steps.version.outputs.version }}
+          build-number: ${{ steps.version.outputs.build }}
 
-          echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
-          rm "$CERT_PATH"
-
-      - name: Build (Release, Developer ID signed)
-        run: |
-          xcodebuild \
-            -project ProjeHealthMonitor.xcodeproj \
-            -scheme ProjeHealthMonitor \
-            -configuration Release \
-            -derivedDataPath build \
-            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
-            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
-            build
-
-      # Xcode's build only re-signs the Sparkle.framework binary itself when embedding it (and
-      # without a secure timestamp); the deeper nested executables it ships — Autoupdate,
-      # Updater.app, and the two XPC services — are copied verbatim from Sparkle's own SPM
-      # release artifact, still carrying Sparkle's own signature. Notarization rejects all of
-      # that, so re-sign everything bottom-up with our own identity before submitting, then
-      # re-sign the outer app bundle last since its signature covers everything inside it.
-      - name: Re-sign Sparkle's bundled binaries
-        run: |
-          APP_PATH="build/Build/Products/Release/Health Mntr.app"
-          SPARKLE_VERSIONED="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
-          IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
-          echo "Using signing identity: $IDENTITY"
-
-          SIGN_ARGS=(--force --options runtime --timestamp --sign "$IDENTITY")
-          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Downloader.xpc"
-          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Installer.xpc"
-          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Autoupdate"
-          codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Updater.app"
-          codesign "${SIGN_ARGS[@]}" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
-          codesign --force --options runtime --timestamp \
-            --entitlements HealthMonitorWidget/HealthMonitorWidget.entitlements \
-            --sign "$IDENTITY" "$APP_PATH/Contents/PlugIns/HealthMonitorWidget.appex"
-          codesign --force --options runtime --timestamp \
-            --entitlements ProjeHealthMonitor/ProjeHealthMonitor.entitlements \
-            --sign "$IDENTITY" "$APP_PATH"
-
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-
-      - name: Notarize app
-        env:
-          API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-        run: |
-          KEY_PATH="$RUNNER_TEMP/AuthKey_VBR3NDQ4H4.p8"
-          echo "$API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
-
-          APP_PATH="build/Build/Products/Release/Health Mntr.app"
-          SUBMISSION_ZIP="$RUNNER_TEMP/notarization-submission.zip"
-          ditto -c -k --keepParent "$APP_PATH" "$SUBMISSION_ZIP"
-
-          set +e
-          NOTARIZE_OUTPUT=$(xcrun notarytool submit "$SUBMISSION_ZIP" \
-            --key "$KEY_PATH" \
-            --key-id VBR3NDQ4H4 \
-            --issuer b27895dd-3a15-45ff-8789-e9358970f6a0 \
-            --wait 2>&1)
-          NOTARIZE_STATUS=$?
-          echo "$NOTARIZE_OUTPUT"
-          set -e
-
-          SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep -m1 '^  id:' | awk '{print $2}')
-          if [ $NOTARIZE_STATUS -ne 0 ] || echo "$NOTARIZE_OUTPUT" | grep -q "status: Invalid"; then
-            echo "Notarization failed or was rejected — fetching the detailed log:"
-            xcrun notarytool log "$SUBMISSION_ID" \
-              --key "$KEY_PATH" \
-              --key-id VBR3NDQ4H4 \
-              --issuer b27895dd-3a15-45ff-8789-e9358970f6a0
-            rm "$KEY_PATH" "$SUBMISSION_ZIP"
-            exit 1
-          fi
-
-          xcrun stapler staple "$APP_PATH"
-          rm "$KEY_PATH" "$SUBMISSION_ZIP"
+      - name: Notarize and staple
+        uses: ./.github/actions/notarize-app
+        with:
+          app-path: ${{ steps.build.outputs.app-path }}
+          api-key-p8-base64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          staple: "true"
 
       - name: Zip app
         id: zip

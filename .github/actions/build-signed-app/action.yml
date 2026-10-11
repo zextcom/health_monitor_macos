@@ -1,0 +1,106 @@
+name: Build signed app
+description: >
+  Imports the Developer ID certificate into a job-scoped keychain, builds the Release
+  configuration, re-signs Sparkle's nested binaries and the widget/app with our identity, and
+  verifies the result. Shared by release.yml and ci.yml's release-build check so the check
+  always exercises exactly what a release does. Callers must delete
+  "$RUNNER_TEMP/app-signing.keychain-db" in an `if: always()` step (composite actions have no
+  post-step hook).
+
+inputs:
+  p12-base64:
+    description: Developer ID Application certificate + private key (.p12), base64.
+    required: true
+  p12-password:
+    description: Password of the .p12.
+    required: true
+  marketing-version:
+    description: MARKETING_VERSION override (e.g. derived from the tag). Empty keeps project.yml's.
+    required: false
+    default: ""
+  build-number:
+    description: CURRENT_PROJECT_VERSION override. Empty keeps project.yml's.
+    required: false
+    default: ""
+
+outputs:
+  app-path:
+    description: Path of the signed .app bundle.
+    value: ${{ steps.paths.outputs.app-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve paths
+      id: paths
+      shell: bash
+      run: echo "app-path=build/Build/Products/Release/Health Mntr.app" >> "$GITHUB_OUTPUT"
+
+    # Standard GitHub-documented pattern for signing with a real Developer ID cert on a
+    # hosted runner: decode the .p12 into a keychain scoped to this job only, and make it
+    # the default so xcodebuild finds the identity without any other config.
+    - name: Import Developer ID certificate
+      shell: bash
+      env:
+        P12_BASE64: ${{ inputs.p12-base64 }}
+        P12_PASSWORD: ${{ inputs.p12-password }}
+      run: |
+        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+        CERT_PATH="$RUNNER_TEMP/developer_id.p12"
+
+        echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+        rm "$CERT_PATH"
+
+    - name: Build (Release, Developer ID signed)
+      shell: bash
+      env:
+        MARKETING_VERSION_INPUT: ${{ inputs.marketing-version }}
+        BUILD_NUMBER_INPUT: ${{ inputs.build-number }}
+      run: |
+        VERSION_ARGS=()
+        [ -n "$MARKETING_VERSION_INPUT" ] && VERSION_ARGS+=("MARKETING_VERSION=$MARKETING_VERSION_INPUT")
+        [ -n "$BUILD_NUMBER_INPUT" ] && VERSION_ARGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER_INPUT")
+        xcodebuild \
+          -project ProjeHealthMonitor.xcodeproj \
+          -scheme ProjeHealthMonitor \
+          -configuration Release \
+          -derivedDataPath build \
+          "${VERSION_ARGS[@]}" \
+          build
+
+    # Xcode's build only re-signs the Sparkle.framework binary itself when embedding it (and
+    # without a secure timestamp); the deeper nested executables it ships — Autoupdate,
+    # Updater.app, and the two XPC services — are copied verbatim from Sparkle's own SPM
+    # release artifact, still carrying Sparkle's own signature. Notarization rejects all of
+    # that, so re-sign everything bottom-up with our own identity before submitting, then
+    # re-sign the outer app bundle last since its signature covers everything inside it.
+    - name: Re-sign Sparkle's bundled binaries
+      shell: bash
+      env:
+        APP_PATH: ${{ steps.paths.outputs.app-path }}
+      run: |
+        SPARKLE_VERSIONED="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+        IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+        echo "Using signing identity: $IDENTITY"
+
+        SIGN_ARGS=(--force --options runtime --timestamp --sign "$IDENTITY")
+        codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Downloader.xpc"
+        codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/XPCServices/Installer.xpc"
+        codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Autoupdate"
+        codesign "${SIGN_ARGS[@]}" "$SPARKLE_VERSIONED/Updater.app"
+        codesign "${SIGN_ARGS[@]}" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
+        codesign --force --options runtime --timestamp \
+          --entitlements HealthMonitorWidget/HealthMonitorWidget.entitlements \
+          --sign "$IDENTITY" "$APP_PATH/Contents/PlugIns/HealthMonitorWidget.appex"
+        codesign --force --options runtime --timestamp \
+          --entitlements ProjeHealthMonitor/ProjeHealthMonitor.entitlements \
+          --sign "$IDENTITY" "$APP_PATH"
+
+        codesign --verify --deep --strict --verbose=2 "$APP_PATH"
