@@ -33,6 +33,11 @@ function RootLayoutNav() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="endpoints/[id]" options={{ headerShown: true, title: 'Endpoint' }} />
+      {/* Add (no params) / edit (?id=) form, presented modally on native; a regular page on web. */}
+      <Stack.Screen
+        name="endpoint-form"
+        options={{ headerShown: true, title: 'Endpoint', presentation: 'modal' }}
+      />
     </Stack>
   );
 }
