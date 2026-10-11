@@ -2,7 +2,8 @@ import { storage } from './storage';
 
 // Configurable via EXPO_PUBLIC_API_URL (inlined at build time by Expo).
 // Defaults to localhost for local development against the backend.
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+// The fallback matches the backend's default PORT (backend/src/config/env.ts) for local dev.
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 const ACCESS_TOKEN_KEY = 'health_monitor.accessToken';
 const REFRESH_TOKEN_KEY = 'health_monitor.refreshToken';

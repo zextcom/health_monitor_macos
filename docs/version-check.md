@@ -54,7 +54,10 @@ JSON. A version check **never** affects the endpoint's health, uptime, or incide
   - `PUT /api/notifications/preferences` accepts `notifyOnVersionChange`.
 - **Worker:** after each health check job, `runVersionCheckIfDue` increments the counter and, on every Nth check, fetches, records and pushes notifications. It runs in a separate `try`, so a version check error can never mask or alter a health result.
 
+## Mobile / web client
+
+The Expo client's add/edit endpoint form (`client/app/endpoint-form.tsx`) has the same version check fields in a collapsed *Advanced* section, with the same blank-keeps-existing secret rule. The endpoint detail screen shows the current version and the change history. The client only stores a disabled version check when the backend can (valid http(s) URL and field path); otherwise it drops it.
+
 ## Not in this iteration
 
-- The mobile (Expo) client form for editing version checks. The backend API is ready for it.
 - Editing backend endpoints from macOS. Backend mode stays read-only there.

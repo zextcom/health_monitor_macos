@@ -1,6 +1,7 @@
 export const colors = {
   healthy: '#22c55e', // green
   unhealthy: '#ef4444', // red
+  degraded: '#f97316', // orange: up, but the service reported warn
   paused: '#eab308', // yellow
   unknown: '#6b7280', // gray
   primary: '#3b82f6', // blue

@@ -1,9 +1,19 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { ApiError } from '../../src/api/client';
-import { getEndpoint, pauseEndpoint, resumeEndpoint, type Endpoint } from '../../src/api/endpoints';
+import {
+  getEndpoint,
+  getEndpointHealthDetails,
+  getEndpointVersions,
+  pauseEndpoint,
+  resumeEndpoint,
+  type Endpoint,
+  type HealthDetailsResponse,
+  type VersionHistoryResponse,
+} from '../../src/api/endpoints';
 import {
   getCheckHistory,
   getIncidents,
@@ -12,12 +22,29 @@ import {
   type Incident,
   type UptimeResponse,
 } from '../../src/api/checks';
-import { StatusBadge, statusFromEndpoint } from '../../src/components/StatusBadge';
+import { StateMarker, StatusBadge } from '../../src/components/StatusBadge';
 import { EmptyState } from '../../src/components/EmptyState';
 import { useRefreshOnFocus } from '../../src/hooks/useRefreshOnFocus';
+import { useSSE } from '../../src/hooks/useSSE';
+import { checkState, deriveStatus, stateOfHealthStatus } from '../../src/logic/status';
+import {
+  componentTitle,
+  formatDateTime,
+  formatObservedValue,
+  formatSeenRange,
+  formatVersion,
+  healthStatusLabel,
+  shouldShowComponents,
+  shouldShowVersion,
+  sortVersionHistory,
+  versionSourceLabel,
+  versionSourceOf,
+  versionStatusText,
+} from '../../src/logic/format';
 
 export default function EndpointDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [endpoint, setEndpoint] = useState<Endpoint | null>(null);
   const [history, setHistory] = useState<HealthCheckResult[]>([]);
   const [uptime, setUptime] = useState<UptimeResponse | null>(null);
@@ -25,21 +52,29 @@ export default function EndpointDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
+  // Optional extras: an older backend without these routes still shows the rest of the screen.
+  const [versions, setVersions] = useState<VersionHistoryResponse | null>(null);
+  const [healthDetails, setHealthDetails] = useState<HealthDetailsResponse | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
       setError(null);
-      const [endpointResult, historyResult, uptimeResult, incidentsResult] = await Promise.all([
-        getEndpoint(id),
-        getCheckHistory(id, { limit: 20 }),
-        getUptime(id, 7),
-        getIncidents(id, 5),
-      ]);
+      const [endpointResult, historyResult, uptimeResult, incidentsResult, versionsResult, detailsResult] =
+        await Promise.all([
+          getEndpoint(id),
+          getCheckHistory(id, { limit: 20 }),
+          getUptime(id, 7),
+          getIncidents(id, 5),
+          getEndpointVersions(id).catch(() => null),
+          getEndpointHealthDetails(id).catch(() => null),
+        ]);
       setEndpoint(endpointResult);
       setHistory(historyResult);
       setUptime(uptimeResult);
       setIncidents(incidentsResult);
+      setVersions(versionsResult);
+      setHealthDetails(detailsResult);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load endpoint');
     } finally {
@@ -48,6 +83,25 @@ export default function EndpointDetailScreen() {
   }, [id]);
 
   useRefreshOnFocus(fetchData);
+
+  // Live updates (web): a new result for this endpoint refetches the screen, coalescing bursts.
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSSE(
+    useCallback(
+      (event) => {
+        if (event.endpointId !== id || refetchTimer.current) return;
+        refetchTimer.current = setTimeout(() => {
+          refetchTimer.current = null;
+          fetchData();
+        }, 1_000);
+      },
+      [id, fetchData],
+    ),
+  );
+
+  const openEditForm = useCallback(() => {
+    if (id) router.push({ pathname: '/endpoint-form', params: { id } });
+  }, [id, router]);
 
   const handleToggle = async () => {
     if (!endpoint) return;
@@ -84,15 +138,32 @@ export default function EndpointDetailScreen() {
   }
 
   const latestCheck = history[0] ?? null;
-  const status = statusFromEndpoint({
+  const status = deriveStatus({
     isPaused: endpoint.isPaused,
     isHealthy: latestCheck?.isHealthy ?? null,
+    healthStatus: latestCheck?.healthStatus ?? null,
   });
   const activeIncident = incidents.find((incident) => incident.isOngoing) ?? null;
+  const versionSource = versionSourceOf(endpoint);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: endpoint.name }} />
+      <Stack.Screen
+        options={{
+          title: endpoint.name,
+          headerRight: () => (
+            <Pressable
+              onPress={openEditForm}
+              hitSlop={8}
+              style={({ pressed }) => [styles.headerButton, pressed && styles.buttonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Edit endpoint"
+            >
+              <Text style={styles.headerButtonText}>Edit</Text>
+            </Pressable>
+          ),
+        }}
+      />
 
       {error ? (
         <View style={styles.errorBox}>
@@ -110,7 +181,13 @@ export default function EndpointDetailScreen() {
         <View style={styles.detailGrid}>
           <DetailItem label="Check Type" value={endpoint.checkType.toUpperCase()} />
           <DetailItem label="Interval" value={`${endpoint.checkInterval}s`} />
-          <DetailItem label="Expected Status" value={String(endpoint.expectedStatusCode)} />
+          {endpoint.checkType === 'http' ? (
+            endpoint.healthStandard ? (
+              <DetailItem label="Evaluation" value="Zext Health Standard" />
+            ) : (
+              <DetailItem label="Expected Status" value={String(endpoint.expectedStatusCode)} />
+            )
+          ) : null}
           <DetailItem label="Group" value={endpoint.groupName ?? '—'} />
         </View>
       </View>
@@ -126,7 +203,10 @@ export default function EndpointDetailScreen() {
             />
             <DetailItem label="Checked At" value={new Date(latestCheck.timestamp).toLocaleString()} />
             {latestCheck.failureReason ? (
-              <DetailItem label="Failure Reason" value={latestCheck.failureReason} />
+              <DetailItem
+                label={status === 'degraded' ? 'Degraded Reason' : 'Failure Reason'}
+                value={latestCheck.failureReason}
+              />
             ) : null}
           </View>
         ) : (
@@ -141,6 +221,12 @@ export default function EndpointDetailScreen() {
           <Text style={styles.muted}>Since {new Date(activeIncident.startedAt).toLocaleString()}</Text>
         </View>
       ) : null}
+
+      {shouldShowVersion(versions, versionSource) ? (
+        <VersionSection endpoint={endpoint} versions={versions} />
+      ) : null}
+
+      {shouldShowComponents(healthDetails, endpoint) ? <ComponentsSection details={healthDetails} /> : null}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Uptime (7 days)</Text>
@@ -162,7 +248,7 @@ export default function EndpointDetailScreen() {
         ) : (
           history.map((check) => (
             <View key={check.id} style={styles.historyRow}>
-              <View style={[styles.historyDot, { backgroundColor: check.isHealthy ? colors.healthy : colors.unhealthy }]} />
+              <StateMarker state={checkState(check)} />
               <Text style={styles.historyTime}>{new Date(check.timestamp).toLocaleString()}</Text>
               <Text style={styles.historyMeta}>
                 {check.statusCode ?? '—'} · {check.responseTimeMs != null ? `${check.responseTimeMs}ms` : '—'}
@@ -188,6 +274,101 @@ export default function EndpointDetailScreen() {
         )}
       </Pressable>
     </ScrollView>
+  );
+}
+
+function VersionSection({ endpoint, versions }: { endpoint: Endpoint; versions: VersionHistoryResponse | null }) {
+  const source = versionSourceOf(endpoint);
+  const current = versions?.current ?? null;
+  const isEnabled = source === 'healthStandard' || endpoint.versionCheck?.isEnabled === true;
+  const state = versionStatusText(current, { source, isEnabled });
+  const history = sortVersionHistory(versions?.history ?? []);
+  const toneColor =
+    state.tone === 'failing' ? colors.degraded : state.tone === 'ok' ? colors.healthy : colors.textSecondary;
+
+  return (
+    <View style={[styles.card, state.tone === 'failing' && styles.versionFailingCard]}>
+      <View style={styles.titleRow}>
+        <Text style={styles.sectionTitle}>Version</Text>
+        {source ? <Text style={styles.muted}>{versionSourceLabel(source)}</Text> : null}
+      </View>
+      <View style={styles.detailGrid}>
+        <DetailItem label="Current" value={formatVersion(current?.version)} />
+        <View style={styles.detailItem}>
+          <Text style={styles.detailLabel}>State</Text>
+          <View style={styles.inlineRow}>
+            {state.tone === 'failing' ? <Ionicons name="warning" size={14} color={toneColor} /> : null}
+            <Text style={[styles.detailValue, { color: toneColor }]}>{state.label}</Text>
+          </View>
+        </View>
+        <DetailItem label="Last Checked" value={formatDateTime(current?.lastCheckedAt)} />
+      </View>
+      {state.detail ? <Text style={[styles.reasonText, { color: colors.degraded }]}>{state.detail}</Text> : null}
+
+      <Text style={styles.subsectionTitle}>History (newest first)</Text>
+      {history.length === 0 ? (
+        <Text style={styles.muted}>No versions recorded yet.</Text>
+      ) : (
+        history.map((entry, index) => (
+          <View key={`${entry.value}-${entry.firstSeenAt}`} style={styles.historyRow}>
+            <Text style={[styles.versionValue, index === 0 && styles.versionValueCurrent]}>
+              {formatVersion(entry.value)}
+            </Text>
+            <Text style={styles.historyMeta}>{formatSeenRange(entry)}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+function ComponentsSection({ details }: { details: HealthDetailsResponse | null }) {
+  const latest = details?.latest ?? null;
+  const overall = latest ? stateOfHealthStatus(latest.status) : null;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.titleRow}>
+        <Text style={styles.sectionTitle}>Components</Text>
+        {latest && overall ? (
+          <View style={styles.inlineRow}>
+            <StateMarker state={overall} />
+            <Text style={[styles.detailValue, { color: colors[overall] }]}>{healthStatusLabel(latest.status)}</Text>
+          </View>
+        ) : null}
+      </View>
+      {!latest ? (
+        <Text style={styles.muted}>No health-standard response read yet.</Text>
+      ) : (
+        <>
+          {latest.output ? <Text style={styles.reasonText}>{latest.output}</Text> : null}
+          <Text style={styles.muted}>Reported {formatDateTime(latest.checkedAt)}</Text>
+          {latest.components.length === 0 ? (
+            <Text style={styles.muted}>The response lists no component checks.</Text>
+          ) : (
+            latest.components.map((component, index) => {
+              const observed = formatObservedValue(component);
+              const state = stateOfHealthStatus(component.status);
+              return (
+                <View key={`${component.key}-${index}`} style={styles.componentRow}>
+                  <View style={styles.inlineRow}>
+                    <StateMarker state={state} />
+                    <Text style={styles.componentKey} numberOfLines={2}>
+                      {componentTitle(component)}
+                    </Text>
+                    <Text style={[styles.componentStatus, { color: colors[state] }]}>
+                      {healthStatusLabel(component.status)}
+                    </Text>
+                  </View>
+                  {observed ? <Text style={styles.historyMeta}>Observed: {observed}</Text> : null}
+                  {component.output ? <Text style={styles.componentOutput}>{component.output}</Text> : null}
+                </View>
+              );
+            })
+          )}
+        </>
+      )}
+    </View>
   );
 }
 
@@ -283,10 +464,60 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  historyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  headerButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  headerButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subsectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  reasonText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  versionFailingCard: {
+    borderColor: colors.degraded,
+  },
+  versionValue: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+  },
+  versionValueCurrent: {
+    fontWeight: '700',
+  },
+  componentRow: {
+    gap: 4,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  componentKey: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  componentStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  componentOutput: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   historyTime: {
     flex: 1,

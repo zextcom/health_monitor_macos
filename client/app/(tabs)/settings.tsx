@@ -6,6 +6,7 @@ import { useAuthStore } from '../../src/stores/auth';
 import {
   getNotificationPreferences,
   updateNotificationPreferences,
+  type NotificationPreferenceKey,
   type NotificationPreferences,
 } from '../../src/api/notifications';
 
@@ -13,7 +14,7 @@ export default function SettingsScreen() {
   const { user, logout, isLoading: authLoading } = useAuthStore();
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [prefsLoading, setPrefsLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<'notifyOnDown' | 'notifyOnRecovery' | null>(null);
+  const [savingKey, setSavingKey] = useState<NotificationPreferenceKey | null>(null);
 
   const fetchPreferences = useCallback(async () => {
     try {
@@ -30,9 +31,9 @@ export default function SettingsScreen() {
     fetchPreferences();
   }, [fetchPreferences]);
 
-  const togglePreference = async (key: 'notifyOnDown' | 'notifyOnRecovery') => {
+  const togglePreference = async (key: NotificationPreferenceKey) => {
     if (!preferences) return;
-    const nextValue = !preferences[key];
+    const nextValue = !(preferences[key] ?? true);
     setSavingKey(key);
     setPreferences({ ...preferences, [key]: nextValue });
     try {
@@ -73,6 +74,7 @@ export default function SettingsScreen() {
                 <Switch
                   value={preferences?.notifyOnDown ?? false}
                   onValueChange={() => togglePreference('notifyOnDown')}
+                  accessibilityLabel="Notify on down"
                   disabled={savingKey !== null || !preferences}
                 />
               </View>
@@ -82,6 +84,17 @@ export default function SettingsScreen() {
                 <Switch
                   value={preferences?.notifyOnRecovery ?? false}
                   onValueChange={() => togglePreference('notifyOnRecovery')}
+                  accessibilityLabel="Notify on recovery"
+                  disabled={savingKey !== null || !preferences}
+                />
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Notify on version change</Text>
+                <Switch
+                  value={preferences?.notifyOnVersionChange ?? true}
+                  onValueChange={() => togglePreference('notifyOnVersionChange')}
+                  accessibilityLabel="Notify on version change"
                   disabled={savingKey !== null || !preferences}
                 />
               </View>

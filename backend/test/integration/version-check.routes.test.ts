@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../src/db/index.js';
-import { endpointVersionSecrets, endpointVersionState } from '../../src/db/schema.js';
+import { endpointSecrets, endpointVersionSecrets, endpointVersionState } from '../../src/db/schema.js';
 import { incrementVersionCheckCounter, recordVersionResult } from '../../src/modules/checks/version-check.js';
 import { decrypt } from '../../src/utils/crypto.js';
 import { createApp, closeApp, cleanDb, registerAndLogin, authHeader, inviteAndLogin } from '../helpers.js';
@@ -162,6 +162,37 @@ describe('version check routes', () => {
       });
       state = await db.query.endpointVersionState.findFirst({ where: eq(endpointVersionState.endpointId, id) });
       expect(state?.checkCounter).toBe(0);
+    });
+  });
+
+  describe('endpoint auth secret cleanup', () => {
+    async function endpointSecretFor(endpointId: string) {
+      return db.query.endpointSecrets.findFirst({ where: eq(endpointSecrets.endpointId, endpointId) });
+    }
+
+    it('switching endpoint auth to none deletes its stored secret', async () => {
+      const { id } = (await createEndpoint({ authType: 'bearer_token', authSecret: 'endpoint-token' })).json();
+      expect(await endpointSecretFor(id)).toBeDefined();
+
+      await app.inject({
+        method: 'PUT',
+        url: `/api/endpoints/${id}`,
+        headers: authHeader(accessToken),
+        payload: { authType: 'none' },
+      });
+
+      expect(await endpointSecretFor(id)).toBeUndefined();
+    });
+
+    it('keeps the stored secret when auth is unchanged or only other fields change', async () => {
+      const { id } = (await createEndpoint({ authType: 'bearer_token', authSecret: 'endpoint-token' })).json();
+      await app.inject({
+        method: 'PUT',
+        url: `/api/endpoints/${id}`,
+        headers: authHeader(accessToken),
+        payload: { name: 'Renamed', authType: 'bearer_token' },
+      });
+      expect(await endpointSecretFor(id)).toBeDefined();
     });
   });
 
