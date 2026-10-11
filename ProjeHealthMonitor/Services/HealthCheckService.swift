@@ -595,10 +595,11 @@ final class HealthCheckService: ObservableObject {
 
     /// CSV export of raw history for one endpoint — header row + one row per result. The only
     /// free-text field (`failureReason`) is escaped per RFC4180 (quote-wrapped if it contains a
-    /// comma/quote/newline, internal quotes doubled).
+    /// comma/quote/newline, internal quotes doubled). `isDegraded` is the last column so existing
+    /// consumers that read columns by position keep working.
     nonisolated static func csv(for results: [HealthCheckResult], endpointName: String) -> String {
         let isoFormatter = ISO8601DateFormatter()
-        var lines = ["endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason"]
+        var lines = ["endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason,isDegraded"]
         for result in results {
             let fields = [
                 csvEscape(endpointName),
@@ -607,6 +608,7 @@ final class HealthCheckService: ObservableObject {
                 result.responseTimeMs.map(String.init) ?? "",
                 result.statusCode.map(String.init) ?? "",
                 csvEscape(result.failureReason ?? ""),
+                result.isDegraded ? "true" : "false",
             ]
             lines.append(fields.joined(separator: ","))
         }

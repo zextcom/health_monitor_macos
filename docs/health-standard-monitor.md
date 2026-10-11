@@ -46,6 +46,7 @@ The same rules run on macOS (`HealthStandard.evaluate`) and in the backend worke
 
 - **Menu bar:** `down` > `degraded` > `healthy`. In backend mode this comes from `summary.degradedEndpoints` / `unhealthyEndpoints`.
 - **Widget:** `WidgetEndpointStatus.isDegraded` (decodeIfPresent, so a snapshot written by an older app still loads). The small widget shows the worst state and a headline such as `3/3 Healthy`, `1/3 Degraded` or `1/3 Down · 1 Degraded`; the medium widget shows each endpoint's state.
+- **History export:** JSON includes `isDegraded`; CSV adds an `isDegraded` column at the end so positional readers keep working.
 - **Status page export:** `EndpointStatusSummary.isDegraded` (also in the JSON). Degraded rows read *Degraded*, and the summary line excludes them from the healthy count, e.g. `2 of 4 endpoints healthy · 1 degraded`.
 - **Rows:** popover rows (local and backend mode) show a *Degraded* label with the reason as its tooltip. Local rows also use the reason in the accessibility label.
 

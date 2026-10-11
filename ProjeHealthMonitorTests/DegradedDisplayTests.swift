@@ -108,3 +108,19 @@ final class StatusPageDegradedTests: XCTestCase {
         XCTAssertEqual(endpoints.map { $0["isDegraded"] as? Bool }, [true, false])
     }
 }
+
+// MARK: - History CSV export
+
+final class CSVDegradedTests: XCTestCase {
+    func testDegradedIsTheLastColumn() throws {
+        let degraded = HealthCheckResult(endpointId: UUID(), timestamp: Date(timeIntervalSince1970: 0), isHealthy: true,
+                                         responseTimeMs: 310, statusCode: 200, failureReason: "disk:utilization: warn",
+                                         isDegraded: true)
+        let healthy = HealthCheckResult(endpointId: UUID(), timestamp: Date(timeIntervalSince1970: 60), isHealthy: true,
+                                        responseTimeMs: 40, statusCode: 200, failureReason: nil)
+        let rows = HealthCheckService.csv(for: [degraded, healthy], endpointName: "Logs").split(separator: "\n")
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertTrue(rows[1].hasSuffix(",disk:utilization: warn,true"))
+        XCTAssertTrue(rows[2].hasSuffix(",,false"))
+    }
+}

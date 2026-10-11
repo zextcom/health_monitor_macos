@@ -489,7 +489,7 @@ final class HealthCheckServiceTests: XCTestCase {
 
     func testCSVIncludesHeaderRow() {
         XCTAssertEqual(HealthCheckService.csv(for: [], endpointName: "API").split(separator: "\n").first,
-                        "endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason")
+                        "endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason,isDegraded")
     }
 
     func testCSVEscapesFailureReasonContainingComma() {
