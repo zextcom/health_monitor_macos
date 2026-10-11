@@ -3,22 +3,17 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 /**
- * Re-runs `callback` whenever the screen regains focus (tab switch, back
- * navigation) or the app comes back to the foreground. Skips the very first
- * focus so it doesn't double-fire alongside the screen's initial fetch.
+ * Runs `callback` whenever the screen gains focus (first mount, tab switch,
+ * back navigation, closing a modal on top of it) and when the app comes back
+ * to the foreground. This is the screens' only fetch trigger, so the first
+ * focus must run too: none of them has a separate initial fetch.
  */
 export function useRefreshOnFocus(callback: () => void): void {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
 
-  const isFirstFocus = useRef(true);
-
   useFocusEffect(
     useCallback(() => {
-      if (isFirstFocus.current) {
-        isFirstFocus.current = false;
-        return;
-      }
       callbackRef.current();
     }, []),
   );
