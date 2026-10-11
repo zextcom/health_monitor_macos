@@ -10,7 +10,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.zext.healthmonitor</string>
+		<string>4MSY72K4VX.com.zext.healthmonitor</string>
 	</array>
 </dict>
 </plist>
