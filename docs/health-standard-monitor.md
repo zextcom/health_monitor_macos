@@ -41,8 +41,13 @@ The same rules run on macOS (`HealthStandard.evaluate`) and in the backend worke
   | Popover row / backend row / menu bar | `checkmark.circle.fill` | `exclamationmark.triangle.fill` | `exclamationmark.circle.fill` |
   | Sparkline | full-height green bar | shorter orange bar | full-height red bar |
   | Detail chart point | circle | triangle | square |
+  | Widget (small headline icon, medium rows) | `checkmark.circle.fill` | `exclamationmark.triangle.fill` | `exclamationmark.circle.fill` |
+  | Exported status page dot | green circle | orange diamond | red circle |
 
 - **Menu bar:** `down` > `degraded` > `healthy`. In backend mode this comes from `summary.degradedEndpoints` / `unhealthyEndpoints`.
+- **Widget:** `WidgetEndpointStatus.isDegraded` (decodeIfPresent, so a snapshot written by an older app still loads). The small widget shows the worst state and a headline such as `3/3 Healthy`, `1/3 Degraded` or `1/3 Down · 1 Degraded`; the medium widget shows each endpoint's state.
+- **History export:** JSON includes `isDegraded`; CSV adds an `isDegraded` column at the end so positional readers keep working.
+- **Status page export:** `EndpointStatusSummary.isDegraded` (also in the JSON). Degraded rows read *Degraded*, and the summary line excludes them from the healthy count, e.g. `2 of 4 endpoints healthy · 1 degraded`.
 - **Rows:** popover rows (local and backend mode) show a *Degraded* label with the reason as its tooltip. Local rows also use the reason in the accessibility label.
 
 ## Notifications
@@ -116,5 +121,4 @@ backend `recordVersionResult`) without an extra request:
 ## Not in this iteration
 
 - The mobile (Expo) client form for the toggle. The backend API accepts `healthStandard` already.
-- The widget and the exported status page still show degraded as healthy.
 - A client library for services. The standard is small enough to implement by hand (see [health-standard.md](health-standard.md#8-how-to-implement)).

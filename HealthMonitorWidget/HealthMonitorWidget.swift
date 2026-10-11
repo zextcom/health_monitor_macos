@@ -7,16 +7,8 @@ struct HealthEntry: TimelineEntry {
     let date: Date
     let dashboard: WidgetDashboard?
 
-    var healthyCount: Int {
-        dashboard?.endpoints.filter(\.isHealthy).count ?? 0
-    }
-
-    var totalCount: Int {
-        dashboard?.endpoints.count ?? 0
-    }
-
-    var allHealthy: Bool {
-        totalCount > 0 && healthyCount == totalCount
+    var summary: WidgetSummary {
+        WidgetSummary(endpoints: dashboard?.endpoints ?? [])
     }
 }
 
@@ -59,19 +51,32 @@ struct HealthTimelineProvider: TimelineProvider {
     )
 }
 
+// MARK: - State color
+
+extension WidgetHealthState {
+    var color: Color {
+        switch self {
+        case .healthy: return .green
+        case .degraded: return .orange
+        case .down: return .red
+        }
+    }
+}
+
 // MARK: - Small Widget View
 
 struct SmallWidgetView: View {
     let entry: HealthEntry
 
     var body: some View {
+        let summary = entry.summary
         VStack(spacing: 8) {
-            Circle()
-                .fill(entry.allHealthy ? Color.green : Color.red)
-                .frame(width: 32, height: 32)
+            Image(systemName: summary.total > 0 ? summary.overallState.symbolName : "circle.dotted")
+                .font(.system(size: 32))
+                .foregroundStyle(summary.total > 0 ? summary.overallState.color : .secondary)
 
-            if let dashboard = entry.dashboard, !dashboard.endpoints.isEmpty {
-                Text(entry.allHealthy ? "\(entry.totalCount)/\(entry.totalCount) Healthy" : "\(entry.totalCount - entry.healthyCount)/\(entry.totalCount) Down")
+            if summary.total > 0 {
+                Text(summary.headline)
                     .font(.system(.headline, design: .rounded))
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
@@ -95,9 +100,9 @@ struct MediumWidgetView: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(dashboard.endpoints.prefix(4).enumerated()), id: \.offset) { _, endpoint in
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(endpoint.isHealthy ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
+                        Image(systemName: endpoint.state.symbolName)
+                            .font(.system(size: 9))
+                            .foregroundStyle(endpoint.state.color)
 
                         Text(endpoint.name)
                             .font(.system(.body, design: .rounded))
@@ -195,6 +200,7 @@ struct HealthMonitorWidgetBundle: WidgetBundle {
         endpoints: [
             WidgetEndpointStatus(name: "API Server", url: "https://api.example.com", isHealthy: true, responseTimeMs: 42, lastCheckedAt: .now, group: nil),
             WidgetEndpointStatus(name: "Database", url: "tcp://db.example.com:5432", isHealthy: false, responseTimeMs: nil, lastCheckedAt: .now, group: nil),
+            WidgetEndpointStatus(name: "Logs", url: "https://logs.example.com/health", isHealthy: true, isDegraded: true, responseTimeMs: 310, lastCheckedAt: .now, group: nil),
         ],
         updatedAt: .now
     ))

@@ -595,10 +595,11 @@ final class HealthCheckService: ObservableObject {
 
     /// CSV export of raw history for one endpoint — header row + one row per result. The only
     /// free-text field (`failureReason`) is escaped per RFC4180 (quote-wrapped if it contains a
-    /// comma/quote/newline, internal quotes doubled).
+    /// comma/quote/newline, internal quotes doubled). `isDegraded` is the last column so existing
+    /// consumers that read columns by position keep working.
     nonisolated static func csv(for results: [HealthCheckResult], endpointName: String) -> String {
         let isoFormatter = ISO8601DateFormatter()
-        var lines = ["endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason"]
+        var lines = ["endpoint,timestamp,isHealthy,responseTimeMs,statusCode,failureReason,isDegraded"]
         for result in results {
             let fields = [
                 csvEscape(endpointName),
@@ -607,6 +608,7 @@ final class HealthCheckService: ObservableObject {
                 result.responseTimeMs.map(String.init) ?? "",
                 result.statusCode.map(String.init) ?? "",
                 csvEscape(result.failureReason ?? ""),
+                result.isDegraded ? "true" : "false",
             ]
             lines.append(fields.joined(separator: ","))
         }
@@ -629,9 +631,29 @@ final class HealthCheckService: ObservableObject {
         let name: String
         let group: String?
         let isHealthy: Bool?
+        /// Up but reporting `warn` (Zext Health Standard). Only meaningful when `isHealthy == true`.
+        let isDegraded: Bool
         let uptimePercentage: Double?
         let lastCheckedAt: Date?
         let isSnoozed: Bool
+
+        init(name: String, group: String?, isHealthy: Bool?, isDegraded: Bool = false, uptimePercentage: Double?,
+             lastCheckedAt: Date?, isSnoozed: Bool) {
+            self.name = name
+            self.group = group
+            self.isHealthy = isHealthy
+            self.isDegraded = isDegraded
+            self.uptimePercentage = uptimePercentage
+            self.lastCheckedAt = lastCheckedAt
+            self.isSnoozed = isSnoozed
+        }
+
+        /// `nil` when there's no history yet.
+        var state: EndpointHealthState? {
+            guard let isHealthy else { return nil }
+            if !isHealthy { return .down }
+            return isDegraded ? .degraded : .healthy
+        }
     }
 
     private struct StatusPagePayload: Codable {
@@ -649,8 +671,7 @@ final class HealthCheckService: ObservableObject {
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .short
 
-        let healthyCount = summaries.filter { $0.isHealthy == true }.count
-        let summaryLine = "\(healthyCount) of \(summaries.count) endpoint\(summaries.count == 1 ? "" : "s") healthy"
+        let summaryLine = statusPageSummaryLine(summaries)
         let rows = summaries.isEmpty
             ? "<p class=\"empty\">No endpoints configured.</p>"
             : summaries.map { statusRowHTML(for: $0, dateFormatter: dateFormatter) }.joined(separator: "\n")
@@ -673,6 +694,7 @@ final class HealthCheckService: ObservableObject {
           --border: #d2d2d7;
           --green: #34c759;
           --red: #ff3b30;
+          --orange: #ff9500;
           --gray: #8e8e93;
         }
         @media (prefers-color-scheme: dark) {
@@ -710,6 +732,8 @@ final class HealthCheckService: ObservableObject {
         .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
         .dot.healthy { background: var(--green); }
         .dot.down { background: var(--red); }
+        /* Diamond, not a circle: degraded differs by shape too, not just color. */
+        .dot.degraded { background: var(--orange); border-radius: 2px; transform: rotate(45deg) scale(0.85); }
         .dot.unknown { background: var(--gray); }
         .name-block { flex: 1 1 200px; min-width: 0; }
         .name { font-weight: 600; }
@@ -748,10 +772,11 @@ final class HealthCheckService: ObservableObject {
     private nonisolated static func statusRowHTML(for summary: EndpointStatusSummary, dateFormatter: DateFormatter) -> String {
         let statusClass: String
         let statusLabel: String
-        switch summary.isHealthy {
-        case .some(true): statusClass = "healthy"; statusLabel = "Healthy"
-        case .some(false): statusClass = "down"; statusLabel = "Down"
-        case .none: statusClass = "unknown"; statusLabel = "No data yet"
+        switch summary.state {
+        case .healthy: statusClass = "healthy"; statusLabel = "Healthy"
+        case .degraded: statusClass = "degraded"; statusLabel = "Degraded"
+        case .down: statusClass = "down"; statusLabel = "Down"
+        case nil: statusClass = "unknown"; statusLabel = "No data yet"
         }
 
         let uptimeText = summary.uptimePercentage.map { String(format: "%.1f%% uptime", $0) } ?? "No uptime data"
@@ -772,6 +797,15 @@ final class HealthCheckService: ObservableObject {
           </div>
         </div>
         """
+    }
+
+    /// e.g. "3 of 4 endpoints healthy", or "2 of 4 endpoints healthy · 1 degraded" — degraded
+    /// endpoints are up but not counted as healthy.
+    nonisolated static func statusPageSummaryLine(_ summaries: [EndpointStatusSummary]) -> String {
+        let healthyCount = summaries.filter { $0.state == .healthy }.count
+        let degradedCount = summaries.filter { $0.state == .degraded }.count
+        let base = "\(healthyCount) of \(summaries.count) endpoint\(summaries.count == 1 ? "" : "s") healthy"
+        return degradedCount > 0 ? "\(base) · \(degradedCount) degraded" : base
     }
 
     /// Minimal HTML entity escaping for user-entered free text (endpoint name/group) — no existing
