@@ -1,7 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { StatusBadge, statusFromEndpoint } from './StatusBadge';
+import type { DashboardEndpoint } from '../api/dashboard';
+import type { HealthStatus } from '../api/endpoints';
+import { deriveStatus } from '../logic/status';
+import { StatusBadge } from './StatusBadge';
 
 export interface EndpointCardData {
   id: string;
@@ -9,7 +12,28 @@ export interface EndpointCardData {
   url: string;
   isPaused: boolean;
   isHealthy: boolean | null;
+  isDegraded?: boolean | null;
+  healthStatus?: HealthStatus | null;
   responseTimeMs?: number | null;
+  /** Down or warn reason of the latest check; shown for degraded and unhealthy endpoints. */
+  reason?: string | null;
+}
+
+/** Card data from a dashboard entry (status, degraded flag, response time and reason). */
+export function cardDataFromDashboard(
+  endpoint: Pick<DashboardEndpoint, 'id' | 'name' | 'url' | 'isPaused' | 'latestCheck'>,
+): EndpointCardData {
+  return {
+    id: endpoint.id,
+    name: endpoint.name,
+    url: endpoint.url,
+    isPaused: endpoint.isPaused,
+    isHealthy: endpoint.latestCheck?.isHealthy ?? null,
+    isDegraded: endpoint.latestCheck?.isDegraded ?? null,
+    healthStatus: endpoint.latestCheck?.healthStatus ?? null,
+    responseTimeMs: endpoint.latestCheck?.responseTimeMs,
+    reason: endpoint.latestCheck?.failureReason ?? null,
+  };
 }
 
 interface EndpointCardProps {
@@ -18,7 +42,8 @@ interface EndpointCardProps {
 }
 
 export function EndpointCard({ endpoint, onPress }: EndpointCardProps) {
-  const status = statusFromEndpoint(endpoint);
+  const status = deriveStatus(endpoint);
+  const showReason = (status === 'degraded' || status === 'unhealthy') && !!endpoint.reason;
 
   return (
     <Pressable
@@ -38,6 +63,11 @@ export function EndpointCard({ endpoint, onPress }: EndpointCardProps) {
             <Text style={styles.responseTime}>{endpoint.responseTimeMs} ms</Text>
           )}
         </View>
+        {showReason ? (
+          <Text style={[styles.reason, { color: colors[status] }]} numberOfLines={2}>
+            {endpoint.reason}
+          </Text>
+        ) : null}
       </View>
       <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
     </Pressable>
@@ -76,6 +106,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 4,
+  },
+  reason: {
+    fontSize: 12,
   },
   responseTime: {
     fontSize: 12,

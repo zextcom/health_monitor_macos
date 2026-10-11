@@ -5,9 +5,11 @@ import { colors } from '../../src/theme/colors';
 import { getDashboard, type DashboardResponse } from '../../src/api/dashboard';
 import { ApiError } from '../../src/api/client';
 import { StatCard } from '../../src/components/StatCard';
-import { EndpointCard } from '../../src/components/EndpointCard';
+import { EndpointCard, cardDataFromDashboard } from '../../src/components/EndpointCard';
 import { EmptyState } from '../../src/components/EmptyState';
 import { useRefreshOnFocus } from '../../src/hooks/useRefreshOnFocus';
+import { useSSE } from '../../src/hooks/useSSE';
+import { applyCheckEvent, summaryCounts } from '../../src/logic/status';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -31,6 +33,13 @@ export default function DashboardScreen() {
 
   useRefreshOnFocus(fetchDashboard);
 
+  // Live updates (web): apply each check result in place, including degraded (`healthStatus`).
+  useSSE(
+    useCallback((event) => {
+      setData((current) => (current ? applyCheckEvent(current, event) : current));
+    }, []),
+  );
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchDashboard();
@@ -44,7 +53,7 @@ export default function DashboardScreen() {
     );
   }
 
-  const summary = data?.summary;
+  const counts = data ? summaryCounts(data.summary) : null;
 
   return (
     <FlatList
@@ -63,18 +72,19 @@ export default function DashboardScreen() {
             </View>
           ) : null}
 
-          {summary ? (
+          {data && counts ? (
             <>
               <View style={styles.statsRow}>
-                <StatCard label="Total" value={summary.totalEndpoints} />
-                <StatCard label="Healthy" value={summary.healthyEndpoints} color={colors.healthy} />
-                <StatCard label="Unhealthy" value={summary.unhealthyEndpoints} color={colors.unhealthy} />
+                <StatCard label="Total" value={counts.total} />
+                <StatCard label="Healthy" value={counts.healthy} color={colors.healthy} />
+                <StatCard label="Degraded" value={counts.degraded} color={colors.degraded} />
               </View>
               <View style={styles.statsRow}>
-                <StatCard label="Paused" value={summary.pausedEndpoints} color={colors.paused} />
+                <StatCard label="Unhealthy" value={counts.unhealthy} color={colors.unhealthy} />
+                <StatCard label="Paused" value={counts.paused} color={colors.paused} />
                 <StatCard
                   label="Overall Uptime"
-                  value={`${summary.overallUptimePercent.toFixed(2)}%`}
+                  value={`${data.summary.overallUptimePercent.toFixed(2)}%`}
                   color={colors.primary}
                 />
               </View>
@@ -86,14 +96,7 @@ export default function DashboardScreen() {
       }
       renderItem={({ item }) => (
         <EndpointCard
-          endpoint={{
-            id: item.id,
-            name: item.name,
-            url: item.url,
-            isPaused: item.isPaused,
-            isHealthy: item.latestCheck?.isHealthy ?? null,
-            responseTimeMs: item.latestCheck?.responseTimeMs,
-          }}
+          endpoint={cardDataFromDashboard(item)}
           onPress={() => router.push(`/endpoints/${item.id}`)}
         />
       )}
