@@ -74,6 +74,8 @@ export const endpoints = pgTable(
     isPaused: boolean('is_paused').notNull().default(false),
     /** Optional periodic version check against a separate URL — see `VersionCheckConfig`. */
     versionCheck: jsonb('version_check').$type<VersionCheckConfig>(),
+    /** Endpoint implements the Zext Health Standard (`zext-health/v1`) — see `health-standard.ts`. */
+    healthStandard: boolean('health_standard').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -137,6 +139,24 @@ export const versionHistory = pgTable(
   (table) => [index('version_history_endpoint_first_seen_idx').on(table.endpointId, table.firstSeenAt)],
 );
 
+// ── Health Standard ──
+
+/**
+ * Latest parsed health-standard response per endpoint. Only the newest component list is kept
+ * (overwritten on every check) so component checks never bloat the per-result history.
+ */
+export const endpointHealthState = pgTable('endpoint_health_state', {
+  endpointId: uuid('endpoint_id')
+    .primaryKey()
+    .references(() => endpoints.id, { onDelete: 'cascade' }),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+  status: text('status', { enum: ['pass', 'warn', 'fail'] }).notNull(),
+  version: text('version'),
+  releaseId: text('release_id'),
+  output: text('output'),
+  components: jsonb('components').$type<HealthComponent[]>().notNull().default([]),
+});
+
 // ── Health Checks ──
 
 export const healthCheckResults = pgTable(
@@ -152,6 +172,8 @@ export const healthCheckResults = pgTable(
     statusCode: integer('status_code'),
     failureReason: text('failure_reason'),
     certificateExpiresAt: timestamp('certificate_expires_at', { withTimezone: true }),
+    /** Standard `status` ('pass' | 'warn' | 'fail') for health-standard endpoints, `null` otherwise. */
+    healthStatus: text('health_status', { enum: ['pass', 'warn', 'fail'] }),
   },
   (table) => [index('hcr_endpoint_timestamp_idx').on(table.endpointId, table.timestamp)],
 );
@@ -238,6 +260,20 @@ export interface VersionCheckConfig {
   authHeaderName: string | null;
 }
 
+export type HealthStatus = 'pass' | 'warn' | 'fail';
+
+/** One flattened entry of a health-standard `checks` map (`key` is the `component:measurement` name). */
+export interface HealthComponent {
+  key: string;
+  status: HealthStatus;
+  componentId?: string;
+  componentType?: string;
+  observedValue?: number | string | boolean;
+  observedUnit?: string;
+  time?: string;
+  output?: string;
+}
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type Endpoint = InferSelectModel<typeof endpoints>;
@@ -249,3 +285,4 @@ export type Incident = InferSelectModel<typeof incidents>;
 export type RefreshToken = InferSelectModel<typeof refreshTokens>;
 export type EndpointVersionState = InferSelectModel<typeof endpointVersionState>;
 export type VersionHistoryEntry = InferSelectModel<typeof versionHistory>;
+export type EndpointHealthState = InferSelectModel<typeof endpointHealthState>;

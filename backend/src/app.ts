@@ -1,4 +1,6 @@
 import Fastify from 'fastify';
+import { sql } from 'drizzle-orm';
+import { Redis as IORedis } from 'ioredis';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -12,9 +14,24 @@ import { sseRoutes } from './modules/sse/sse.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 import { notificationRoutes } from './modules/notifications/notification.routes.js';
 import { retentionRoutes } from './modules/retention/retention.routes.js';
+import { standardsRoutes } from './modules/standards/standards.routes.js';
+import {
+  createSelfHealthHandler,
+  readPackageVersion,
+  resolveReleaseId,
+  type Probe,
+} from './modules/standards/self-health.js';
+import { HEALTH_MEDIA_TYPE } from './modules/standards/health-standard.js';
 import { startSSESubscriber } from './modules/sse/sse-bus.js';
+import { db } from './db/index.js';
+import { env } from './config/env.js';
 
-export async function buildApp() {
+export interface BuildAppOptions {
+  /** Overrides the `/health` dependency probes (tests use this to simulate a failing dependency). */
+  healthProbes?: Record<string, Probe>;
+}
+
+export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({ logger: true });
 
   await app.register(cors, {
@@ -41,10 +58,32 @@ export async function buildApp() {
     await api.register(dashboardRoutes, { prefix: '/dashboard' });
     await api.register(retentionRoutes, { prefix: '/admin' });
     await api.register(notificationRoutes, { prefix: '/notifications' });
+    await api.register(standardsRoutes, { prefix: '/standards' });
   }, { prefix: '/api' });
 
-  // Health check stays at root - no /api prefix
-  app.get('/health', async () => ({ status: 'ok' }));
+  // Health check stays at root - no /api prefix. Zext Health Standard format (see
+  // docs/health-standard.md): 200 for pass/warn, 503 when a dependency fails.
+  let healthRedis: IORedis | null = null;
+  const healthProbes: Record<string, Probe> = options.healthProbes ?? {
+    postgres: () => db.execute(sql`select 1`),
+    redis: () => {
+      healthRedis ??= new IORedis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
+      return healthRedis.ping();
+    },
+  };
+  const selfHealth = createSelfHealthHandler({
+    probes: healthProbes,
+    version: readPackageVersion(),
+    releaseId: resolveReleaseId(),
+  });
+  app.addHook('onClose', async () => {
+    healthRedis?.disconnect();
+  });
+  app.get('/health', async (_request, reply) => {
+    const { httpStatus, body } = await selfHealth();
+    reply.code(httpStatus).type(HEALTH_MEDIA_TYPE).header('Cache-Control', 'no-store');
+    return JSON.stringify(body);
+  });
 
   await startSSESubscriber();
 

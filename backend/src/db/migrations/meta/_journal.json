@@ -15,6 +15,13 @@
       "when": 1791558810131,
       "tag": "0001_version_check",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791721228385,
+      "tag": "0002_health_standard",
+      "breakpoints": true
     }
   ]
 }
