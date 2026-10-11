@@ -3,12 +3,16 @@ import { db } from '../../db/index.js';
 import {
   dailyStats,
   endpoints,
+  endpointHealthState,
   endpointVersionState,
   healthCheckResults,
   incidents,
   type Endpoint,
+  type EndpointHealthState,
   type EndpointVersionState,
+  type HealthStatus,
 } from '../../db/schema.js';
+import { toHealthDetails, usesAutoVersion, type HealthDetails } from '../checks/health-standard-check.js';
 
 export interface DashboardEndpoint {
   id: string;
@@ -24,20 +28,29 @@ export interface DashboardEndpoint {
     failureReason: string | null;
     timestamp: string;
     certificateExpiresAt: string | null;
+    /** Health-standard `status` of this result; `null` for non-standard endpoints. */
+    healthStatus: HealthStatus | null;
+    /** Up but the service reported `warn` (counts as healthy for uptime). */
+    isDegraded: boolean;
   } | null;
   uptimePercent24h: number | null;
   activeIncident: {
     startedAt: string;
     failureReason: string | null;
   } | null;
-  /** `null` when the endpoint has no version check configured. */
+  /** `null` when the endpoint has neither a version check nor auto-tracking via the health standard. */
   version: {
     isEnabled: boolean;
     current: string | null;
     isFailing: boolean;
     failureReason: string | null;
     lastCheckedAt: string | null;
+    /** Where the version comes from: an explicit version check, or the health-standard response. */
+    source: 'versionCheck' | 'healthStandard';
   } | null;
+  healthStandard: boolean;
+  /** Latest parsed health-standard response; `null` when the flag is off or nothing was parsed yet. */
+  healthDetails: HealthDetails | null;
 }
 
 export interface DashboardResponse {
@@ -45,6 +58,8 @@ export interface DashboardResponse {
     totalEndpoints: number;
     healthyEndpoints: number;
     unhealthyEndpoints: number;
+    /** Subset of `healthyEndpoints` whose latest health-standard status is `warn`. */
+    degradedEndpoints: number;
     pausedEndpoints: number;
     overallUptimePercent: number;
   };
@@ -52,9 +67,19 @@ export interface DashboardResponse {
 }
 
 export function versionSummary(
-  endpoint: Pick<Endpoint, 'versionCheck'>,
+  endpoint: Pick<Endpoint, 'versionCheck'> & Partial<Pick<Endpoint, 'healthStandard'>>,
   state: EndpointVersionState | undefined,
 ): DashboardEndpoint['version'] {
+  if (usesAutoVersion({ healthStandard: endpoint.healthStandard ?? false, versionCheck: endpoint.versionCheck })) {
+    return {
+      isEnabled: true,
+      current: state?.lastVersion ?? null,
+      isFailing: false,
+      failureReason: null,
+      lastCheckedAt: state?.lastCheckedAt ? state.lastCheckedAt.toISOString() : null,
+      source: 'healthStandard',
+    };
+  }
   if (!endpoint.versionCheck) {
     return null;
   }
@@ -65,7 +90,15 @@ export function versionSummary(
     isFailing,
     failureReason: isFailing ? (state?.lastFailureReason ?? null) : null,
     lastCheckedAt: state?.lastCheckedAt ? state.lastCheckedAt.toISOString() : null,
+    source: 'versionCheck',
   };
+}
+
+export function healthDetailsSummary(
+  endpoint: Pick<Endpoint, 'healthStandard'>,
+  state: EndpointHealthState | undefined,
+): HealthDetails | null {
+  return endpoint.healthStandard && state ? toHealthDetails(state) : null;
 }
 
 function emptyDashboard(): DashboardResponse {
@@ -74,6 +107,7 @@ function emptyDashboard(): DashboardResponse {
       totalEndpoints: 0,
       healthyEndpoints: 0,
       unhealthyEndpoints: 0,
+      degradedEndpoints: 0,
       pausedEndpoints: 0,
       overallUptimePercent: 100,
     },
@@ -94,7 +128,7 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
   since.setDate(since.getDate() - 1);
   const sinceStr = since.toISOString().slice(0, 10);
 
-  const [latestChecks, activeIncidents, statsRows, versionStates] = await Promise.all([
+  const [latestChecks, activeIncidents, statsRows, versionStates, healthStates] = await Promise.all([
     db
       .selectDistinctOn([healthCheckResults.endpointId])
       .from(healthCheckResults)
@@ -109,7 +143,10 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
       .from(dailyStats)
       .where(and(inArray(dailyStats.endpointId, endpointIds), gte(dailyStats.date, sinceStr))),
     db.select().from(endpointVersionState).where(inArray(endpointVersionState.endpointId, endpointIds)),
+    db.select().from(endpointHealthState).where(inArray(endpointHealthState.endpointId, endpointIds)),
   ]);
+
+  const healthStateByEndpoint = new Map(healthStates.map((state) => [state.endpointId, state]));
 
   const versionStateByEndpoint = new Map(versionStates.map((state) => [state.endpointId, state]));
 
@@ -136,6 +173,7 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
 
   let healthyEndpoints = 0;
   let unhealthyEndpoints = 0;
+  let degradedEndpoints = 0;
   let pausedEndpoints = 0;
   let totalChecksAll = 0;
   let downChecksAll = 0;
@@ -150,6 +188,9 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
     } else if (latestCheck) {
       if (latestCheck.isHealthy) {
         healthyEndpoints += 1;
+        if (latestCheck.healthStatus === 'warn') {
+          degradedEndpoints += 1;
+        }
       } else {
         unhealthyEndpoints += 1;
       }
@@ -177,6 +218,8 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
             certificateExpiresAt: latestCheck.certificateExpiresAt
               ? latestCheck.certificateExpiresAt.toISOString()
               : null,
+            healthStatus: latestCheck.healthStatus,
+            isDegraded: latestCheck.isHealthy && latestCheck.healthStatus === 'warn',
           }
         : null,
       uptimePercent24h: stats
@@ -191,6 +234,8 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
           }
         : null,
       version: versionSummary(endpoint, versionStateByEndpoint.get(endpoint.id)),
+      healthStandard: endpoint.healthStandard,
+      healthDetails: healthDetailsSummary(endpoint, healthStateByEndpoint.get(endpoint.id)),
     };
   });
 
@@ -202,6 +247,7 @@ export async function getDashboard(userId: string): Promise<DashboardResponse> {
       totalEndpoints: userEndpoints.length,
       healthyEndpoints,
       unhealthyEndpoints,
+      degradedEndpoints,
       pausedEndpoints,
       overallUptimePercent,
     },

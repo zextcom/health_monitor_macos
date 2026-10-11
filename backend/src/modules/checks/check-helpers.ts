@@ -54,3 +54,26 @@ export function matchesAssertion(
       return false;
   }
 }
+
+/** ANDs `assertions` against an already-parsed JSON body; the first failing one gives the reason. */
+export function evaluateAssertions(
+  body: unknown,
+  assertions: JsonAssertion[],
+): { passed: boolean; reason: string | null } {
+  for (const assertion of assertions) {
+    const value = getByPath(body, assertion.path);
+    let matched: boolean;
+    try {
+      matched = matchesAssertion(value, assertion.expectedValue, assertion.matchMode);
+    } catch {
+      matched = false; // invalid regex never matches
+    }
+    if (!matched) {
+      return {
+        passed: false,
+        reason: `Assertion failed: "${assertion.path}" did not match "${assertion.expectedValue}"`,
+      };
+    }
+  }
+  return { passed: true, reason: null };
+}

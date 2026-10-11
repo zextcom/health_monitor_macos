@@ -13,13 +13,16 @@ export type NotificationType =
   | 'recovery'
   | 'version_change'
   | 'version_failed'
-  | 'version_recovered';
+  | 'version_recovered'
+  | 'degraded'
+  | 'degraded_recovered';
 
 type PreferenceKey = 'notifyOnDown' | 'notifyOnRecovery' | 'notifyOnVersionChange';
 
 /**
- * Which user preference gates each notification type. Version check failure/resolved follow
- * down/recovery (same as the macOS app); version changes have their own toggle.
+ * Which user preference gates each notification type. Version check failure/resolved and the
+ * health-standard degraded/no-longer-degraded pair follow down/recovery (same as the macOS app);
+ * version changes have their own toggle.
  */
 export const preferenceForNotificationType: Record<NotificationType, PreferenceKey> = {
   down: 'notifyOnDown',
@@ -27,6 +30,8 @@ export const preferenceForNotificationType: Record<NotificationType, PreferenceK
   version_change: 'notifyOnVersionChange',
   version_failed: 'notifyOnDown',
   version_recovered: 'notifyOnRecovery',
+  degraded: 'notifyOnDown',
+  degraded_recovered: 'notifyOnRecovery',
 };
 
 export async function shouldNotify(userId: string, type: NotificationType): Promise<boolean> {
@@ -120,7 +125,11 @@ export async function notifyEndpointDown(
   });
 }
 
-export async function notifyEndpointRecovered(endpointId: string): Promise<void> {
+/**
+ * `degradedReason` is set when the endpoint came back as a health-standard `warn` — down → degraded
+ * sends only this one "recovered" notification, worded as degraded, rather than a second one.
+ */
+export async function notifyEndpointRecovered(endpointId: string, degradedReason?: string | null): Promise<void> {
   const endpoint = await db.query.endpoints.findFirst({
     where: eq(endpoints.id, endpointId),
   });
@@ -131,7 +140,10 @@ export async function notifyEndpointRecovered(endpointId: string): Promise<void>
 
   await sendNotification(endpoint.userId, {
     title: '🟢 Endpoint Recovered',
-    body: `${endpoint.name} is back online.`,
+    body:
+      degradedReason === undefined
+        ? `${endpoint.name} is back online.`
+        : `${endpoint.name} is back online but degraded. ${degradedReason ?? ''}`.trim(),
     data: { endpointId, type: 'recovery' },
   });
 }
@@ -172,5 +184,21 @@ export async function notifyVersionCheckRecovered(endpointId: string): Promise<v
     title: '✅ Version Check Resolved',
     body: `${name} version check succeeded again.`,
     data: { endpointId, type: 'version_recovered' },
+  }));
+}
+
+export async function notifyEndpointDegraded(endpointId: string, reason: string | null): Promise<void> {
+  await notifyForEndpoint(endpointId, (name) => ({
+    title: '🟠 Endpoint Degraded',
+    body: `${name} reports warn. ${reason ?? ''}`.trim(),
+    data: { endpointId, type: 'degraded' },
+  }));
+}
+
+export async function notifyEndpointNoLongerDegraded(endpointId: string): Promise<void> {
+  await notifyForEndpoint(endpointId, (name) => ({
+    title: '🟢 Endpoint Healthy',
+    body: `${name} is no longer degraded.`,
+    data: { endpointId, type: 'degraded_recovered' },
   }));
 }

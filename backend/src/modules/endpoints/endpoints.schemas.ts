@@ -38,6 +38,8 @@ export const createEndpointSchema = z.object({
   versionCheck: versionCheckSchema.nullable().optional(),
   /** Secret for `versionCheck.authType` — stored encrypted, never returned. */
   versionAuthSecret: z.string().optional(),
+  /** Evaluate responses per the Zext Health Standard (`zext-health/v1`) instead of `expectedStatusCode`. */
+  healthStandard: z.boolean().default(false),
 });
 
 export const updateEndpointSchema = createEndpointSchema.partial();
@@ -64,6 +66,7 @@ export const importEndpointSchema = z
       .default('none'),
     authUsername: z.string().nullable().optional(),
     authHeaderName: z.string().nullable().optional(),
+    healthStandard: z.boolean().optional().default(false),
     // macOS export shape: camelCase auth enum, no secrets.
     versionCheck: z
       .object({

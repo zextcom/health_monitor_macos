@@ -34,6 +34,7 @@ describe('dashboard routes', () => {
         totalEndpoints: 0,
         healthyEndpoints: 0,
         unhealthyEndpoints: 0,
+        degradedEndpoints: 0,
         pausedEndpoints: 0,
         overallUptimePercent: 100,
       });
