@@ -13,9 +13,12 @@ struct HealthCheckResult: Codable, Identifiable, Equatable {
     /// check itself (see `HealthCheckService`) and carried forward between refreshes. `var` since
     /// it's attached to an already-built result rather than computed inside `executeCheck`.
     var certificateExpiresAt: Date?
+    /// Health-standard endpoints only: up (`isHealthy`) but the service reported `warn`. Counts as
+    /// healthy for uptime, incidents and daily stats; `failureReason` then holds the warn reason.
+    let isDegraded: Bool
 
     init(id: UUID = UUID(), endpointId: UUID, timestamp: Date, isHealthy: Bool, responseTimeMs: Int?,
-         statusCode: Int?, failureReason: String?, certificateExpiresAt: Date? = nil) {
+         statusCode: Int?, failureReason: String?, certificateExpiresAt: Date? = nil, isDegraded: Bool = false) {
         self.id = id
         self.endpointId = endpointId
         self.timestamp = timestamp
@@ -24,6 +27,27 @@ struct HealthCheckResult: Codable, Identifiable, Equatable {
         self.statusCode = statusCode
         self.failureReason = failureReason
         self.certificateExpiresAt = certificateExpiresAt
+        self.isDegraded = isHealthy && isDegraded
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, endpointId, timestamp, isHealthy, responseTimeMs, statusCode, failureReason, certificateExpiresAt
+        case isDegraded
+    }
+
+    // Custom decoding so history persisted before `isDegraded` existed still loads (same reason as
+    // `Endpoint`'s decodeIfPresent fields). Encoding stays synthesized.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        endpointId = try container.decode(UUID.self, forKey: .endpointId)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        isHealthy = try container.decode(Bool.self, forKey: .isHealthy)
+        responseTimeMs = try container.decodeIfPresent(Int.self, forKey: .responseTimeMs)
+        statusCode = try container.decodeIfPresent(Int.self, forKey: .statusCode)
+        failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
+        certificateExpiresAt = try container.decodeIfPresent(Date.self, forKey: .certificateExpiresAt)
+        isDegraded = try container.decodeIfPresent(Bool.self, forKey: .isDegraded) ?? false
     }
 }
 

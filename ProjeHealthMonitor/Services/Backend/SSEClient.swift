@@ -20,6 +20,8 @@ struct SSECheckResult: Decodable, Sendable {
     let responseTimeMs: Int?
     let statusCode: Int?
     let failureReason: String?
+    /// Health-standard `status` ("pass" / "warn" / "fail"); absent for other endpoints or older backends.
+    let healthStatus: String?
     let timestamp: String
 }
 

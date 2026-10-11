@@ -28,6 +28,15 @@ struct DashboardSummary: Codable, Sendable {
     let unhealthyEndpoints: Int
     let pausedEndpoints: Int
     let overallUptimePercent: Double
+    /// Subset of `healthyEndpoints` reporting health-standard `warn`. Optional for older backends.
+    let degradedEndpoints: Int?
+
+    /// Menu bar status in backend mode: down > degraded > healthy.
+    var overallStatus: HealthCheckService.OverallStatus {
+        if totalEndpoints == 0 { return .unknown }
+        if unhealthyEndpoints > 0 { return .down }
+        return (degradedEndpoints ?? 0) > 0 ? .degraded : .healthy
+    }
 }
 
 struct LatestCheckInfo: Codable, Sendable {
@@ -37,6 +46,15 @@ struct LatestCheckInfo: Codable, Sendable {
     let failureReason: String?
     let timestamp: String
     let certificateExpiresAt: String?
+    /// Health-standard `status` ("pass" / "warn" / "fail"); `nil` for other endpoints or older backends.
+    let healthStatus: String?
+    /// Up but reporting `warn`. Optional for older backends.
+    let isDegraded: Bool?
+
+    var healthState: EndpointHealthState {
+        if !isHealthy { return .down }
+        return isDegraded == true ? .degraded : .healthy
+    }
 }
 
 struct ActiveIncidentInfo: Codable, Sendable {
@@ -51,6 +69,8 @@ struct DashboardVersionInfo: Codable, Sendable {
     let isFailing: Bool
     let failureReason: String?
     let lastCheckedAt: String?
+    /// "versionCheck" or "healthStandard" (auto-tracked from the health response). Optional for older backends.
+    let source: String?
 }
 
 struct DashboardEndpointInfo: Codable, Identifiable, Sendable {
@@ -65,6 +85,8 @@ struct DashboardEndpointInfo: Codable, Identifiable, Sendable {
     let activeIncident: ActiveIncidentInfo?
     /// Optional so dashboards from a backend predating version checks still decode.
     let version: DashboardVersionInfo?
+    /// Whether the endpoint uses the Zext Health Standard. Optional for older backends.
+    let healthStandard: Bool?
 }
 
 struct DashboardResponse: Codable, Sendable {

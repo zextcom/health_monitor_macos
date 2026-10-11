@@ -13,8 +13,7 @@ struct MenuBarIconView: View {
         guard backendAuth.isConnected, let dashboard = backendSync.dashboardData else {
             return status
         }
-        if dashboard.summary.totalEndpoints == 0 { return .unknown }
-        return dashboard.summary.unhealthyEndpoints > 0 ? .down : .healthy
+        return dashboard.summary.overallStatus
     }
 
     var body: some View {
@@ -40,16 +39,18 @@ struct MenuBarIconView: View {
     /// Shape differs per status, not just color, so the icon reads correctly for color-blind users.
     private var symbolName: String {
         switch effectiveStatus {
-        case .healthy: return "checkmark.circle.fill"
-        case .down: return "exclamationmark.circle.fill"
+        case .healthy: return EndpointHealthState.healthy.symbolName
+        case .degraded: return EndpointHealthState.degraded.symbolName
+        case .down: return EndpointHealthState.down.symbolName
         case .unknown: return "circle.dotted"
         }
     }
 
     private var color: Color {
         switch effectiveStatus {
-        case .healthy: return .green
-        case .down: return .red
+        case .healthy: return EndpointHealthState.healthy.color
+        case .degraded: return EndpointHealthState.degraded.color
+        case .down: return EndpointHealthState.down.color
         case .unknown: return .gray
         }
     }
@@ -57,6 +58,7 @@ struct MenuBarIconView: View {
     private var accessibilityDescription: String {
         switch effectiveStatus {
         case .healthy: return "All endpoints healthy"
+        case .degraded: return "One or more endpoints degraded"
         case .down: return "One or more endpoints down"
         case .unknown: return "No data yet"
         }

@@ -88,7 +88,15 @@ struct EndpointRowView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if endpoint.versionCheck?.isEnabled == true, let versionState {
+                if let lastResult, lastResult.isDegraded {
+                    Label("Degraded", systemImage: EndpointHealthState.degraded.symbolName)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .help(lastResult.failureReason ?? "The service reports a warning")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Degraded: \(lastResult.failureReason ?? "the service reports a warning")")
+                }
+                if showsVersionBadge, let versionState {
                     VersionBadge(version: versionState.currentVersion, isFailing: versionState.isFailing,
                                  failureReason: versionState.lastResult?.failureReason)
                 }
@@ -127,18 +135,27 @@ struct EndpointRowView: View {
 
     private var dotColor: Color {
         guard let lastResult else { return .gray }
-        return lastResult.isHealthy ? .green : .red
+        return EndpointHealthState(lastResult).color
     }
 
     /// Shape differs per status, not just color, so the indicator reads correctly for color-blind users.
     private var statusSymbolName: String {
         guard let lastResult else { return "circle.dotted" }
-        return lastResult.isHealthy ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+        return EndpointHealthState(lastResult).symbolName
     }
 
     private var statusDescription: String {
         guard let lastResult else { return "no data yet" }
-        return lastResult.isHealthy ? "healthy" : "down"
+        let state = EndpointHealthState(lastResult)
+        if state == .degraded, let reason = lastResult.failureReason {
+            return "degraded: \(reason)"
+        }
+        return state.label
+    }
+
+    /// Explicit version check, or the version read from a health-standard response.
+    private var showsVersionBadge: Bool {
+        endpoint.versionCheck?.isEnabled == true || HealthCheckService.usesAutoVersion(endpoint)
     }
 
     private var accessibilityLabelText: String {

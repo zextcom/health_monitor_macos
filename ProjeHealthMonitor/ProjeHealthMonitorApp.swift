@@ -36,6 +36,7 @@ struct ProjeHealthMonitorApp: App {
     @StateObject private var historyStore: HealthHistoryStore
     @StateObject private var dailyStatsStore: DailyStatsStore
     @StateObject private var versionStore: VersionStore
+    @StateObject private var healthDetailsStore: HealthDetailsStore
     @StateObject private var healthCheckService: HealthCheckService
     @StateObject private var updaterViewModel: UpdaterViewModel
     @StateObject private var backendAuth: BackendAuthStore
@@ -60,18 +61,21 @@ struct ProjeHealthMonitorApp: App {
         _backendSync = StateObject(wrappedValue: backendSync)
 
         let notificationService = NotificationService()
+        let healthDetailsStore = HealthDetailsStore()
         let healthCheckService = HealthCheckService(
             endpointStore: endpointStore,
             historyStore: historyStore,
             dailyStatsStore: dailyStatsStore,
             notificationService: notificationService,
-            versionStore: versionStore
+            versionStore: versionStore,
+            healthDetailsStore: healthDetailsStore
         )
 
         _endpointStore = StateObject(wrappedValue: endpointStore)
         _historyStore = StateObject(wrappedValue: historyStore)
         _dailyStatsStore = StateObject(wrappedValue: dailyStatsStore)
         _versionStore = StateObject(wrappedValue: versionStore)
+        _healthDetailsStore = StateObject(wrappedValue: healthDetailsStore)
         _healthCheckService = StateObject(wrappedValue: healthCheckService)
         _updaterViewModel = StateObject(wrappedValue: UpdaterViewModel())
 
@@ -144,6 +148,7 @@ struct ProjeHealthMonitorApp: App {
                 .environmentObject(historyStore)
                 .environmentObject(dailyStatsStore)
                 .environmentObject(versionStore)
+                .environmentObject(healthDetailsStore)
                 .environmentObject(updaterViewModel)
                 .environmentObject(backendAuth)
                 .environmentObject(backendSync)

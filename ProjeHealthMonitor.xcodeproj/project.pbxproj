@@ -13,6 +13,7 @@
 		11809FDFAAFBF16BBBFD6E2D /* EndpointRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */; };
 		11D345C9B31BE6C0ED02B869 /* VersionCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2216B2976313E4FDD3AACBF /* VersionCheck.swift */; };
 		18EE3EF4A13A625015577C58 /* EndpointStatsRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */; };
+		22049EE8B3160B41F90A53C9 /* HealthStandard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B66AAA42A3870CFD251BD /* HealthStandard.swift */; };
 		241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99625928DAA517E46B40E9CC /* PopoverContentView.swift */; };
 		25DDB78136E8EF790B35D016 /* BackendSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A218C111116ECF1E18981B4 /* BackendSyncService.swift */; };
 		2693BB2D875F111489C37B16 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF821EC4A6901C3073B848FA /* WidgetData.swift */; };
@@ -36,7 +37,9 @@
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
 		781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 9206A9B4E24ED8C577CD938F /* Sparkle */; };
 		7D0B5CAC10CF708A7667C298 /* HealthMonitorWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0D1BC14F0825A3D74DF9488D /* HealthMonitorWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		849D6E29D201AC90934C1F18 /* HealthDetailsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B511158A3E93BB39654D450 /* HealthDetailsStore.swift */; };
 		8AC1B68D72D3FABBA8DB611D /* BackendModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964B1659E52DBB5530768B6E /* BackendModels.swift */; };
+		9092041455E51E9D4CA2C681 /* HealthStandardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */; };
 		936A7C49E602498ED7FA2891 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = F8305DC74D6AC1FD1080F513 /* KeyboardShortcuts */; };
 		9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25498AFC902EA8B18A25E00 /* NotificationService.swift */; };
 		A0BC7BFAA69BFA044725CECD /* DailyUptimeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F4CF8AFC5D53FD598C0252 /* DailyUptimeBarView.swift */; };
@@ -49,9 +52,11 @@
 		C000DFC585881158D5AA749C /* PopoverUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59B82EAB47F74D4B9B57B769 /* PopoverUITests.swift */; };
 		C0E8D2EC3356DB7FCBC51B3B /* HealthCheckServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */; };
 		C2057D68887A567B081E9F44 /* UpdaterViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */; };
+		C97CC7103C719C511962CB5E /* HealthStandardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39F5C0C6304CE58ECF506C1 /* HealthStandardTests.swift */; };
 		CFB40F8394FBA708BA20E201 /* HealthCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */; };
 		D445ABEF67522639900B8D7E /* VersionCheckUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85DB44B381AFEAB42278443E /* VersionCheckUITests.swift */; };
 		D719FD42398FA2719A33A305 /* VersionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CDA679252CC924F6AB6DE1 /* VersionCheckTests.swift */; };
+		D8A12BBACD322363958A0003 /* HealthStateStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EA2A2720D7FEB22C484EA2A /* HealthStateStyle.swift */; };
 		E3B86B8EF3F5C18076278B52 /* EndpointFormUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41F2F01FAAB8DC77179654D1 /* EndpointFormUITests.swift */; };
 		E3D8FD8E147162C23DE97C22 /* EndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */; };
 		E5B05BD248B5C2E5A3F95296 /* VersionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 280ACE793D9290C0E7B6FE5D /* VersionStore.swift */; };
@@ -98,6 +103,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStandardUITests.swift; sourceTree = "<group>"; };
 		0D1BC14F0825A3D74DF9488D /* HealthMonitorWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HealthMonitorWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D9833ABF2C0C70DEB4919D2 /* UpdaterViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterViewModelTests.swift; sourceTree = "<group>"; };
 		13F4715B5F3D95043E0D4B74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -114,11 +120,13 @@
 		57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistoryStore.swift; sourceTree = "<group>"; };
 		59B82EAB47F74D4B9B57B769 /* PopoverUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverUITests.swift; sourceTree = "<group>"; };
 		5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStatsStore.swift; sourceTree = "<group>"; };
+		6B511158A3E93BB39654D450 /* HealthDetailsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDetailsStore.swift; sourceTree = "<group>"; };
 		6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckResult.swift; sourceTree = "<group>"; };
 		726A399E77E0A04D69D547E3 /* HealthMonitorWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthMonitorWidget.swift; sourceTree = "<group>"; };
 		783A01FFFC5ED7BE3A3EDBF4 /* EndpointDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointDetailView.swift; sourceTree = "<group>"; };
 		79481FDD2DC03E69C6F3CA5A /* SparklineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparklineView.swift; sourceTree = "<group>"; };
 		7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStore.swift; sourceTree = "<group>"; };
+		7EA2A2720D7FEB22C484EA2A /* HealthStateStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStateStyle.swift; sourceTree = "<group>"; };
 		85DB44B381AFEAB42278443E /* VersionCheckUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionCheckUITests.swift; sourceTree = "<group>"; };
 		87CDA679252CC924F6AB6DE1 /* VersionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionCheckTests.swift; sourceTree = "<group>"; };
 		92057BDBFB7E138F2851C9D3 /* BackendAuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAuthStore.swift; sourceTree = "<group>"; };
@@ -146,9 +154,11 @@
 		D547E21ABAA7C6C8EC7A0D47 /* CertificateFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateFixtures.swift; sourceTree = "<group>"; };
 		D936AFA1A00E9EB11089716F /* ProjeHealthMonitorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProjeHealthMonitorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBAEBF4C3A95465854C98B90 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E39F5C0C6304CE58ECF506C1 /* HealthStandardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStandardTests.swift; sourceTree = "<group>"; };
 		E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistoryStoreTests.swift; sourceTree = "<group>"; };
 		F7F3AC49F890D2786954A39B /* VersionBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionBadge.swift; sourceTree = "<group>"; };
 		F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckServiceTests.swift; sourceTree = "<group>"; };
+		FA1B66AAA42A3870CFD251BD /* HealthStandard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStandard.swift; sourceTree = "<group>"; };
 		FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjeHealthMonitorApp.swift; sourceTree = "<group>"; };
 		FD60554FDACAB8E62482E152 /* ProjeHealthMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProjeHealthMonitor.entitlements; sourceTree = "<group>"; };
 		FEE21C47ACEF036897E38750 /* Endpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoint.swift; sourceTree = "<group>"; };
@@ -173,6 +183,7 @@
 				5B85805A36EEB606FF966B60 /* DailyStatsStore.swift */,
 				7E3DAA2C5574907CCADF7CD0 /* EndpointStore.swift */,
 				9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */,
+				6B511158A3E93BB39654D450 /* HealthDetailsStore.swift */,
 				57350C7AB3A0152EA5F08F4D /* HealthHistoryStore.swift */,
 				D25498AFC902EA8B18A25E00 /* NotificationService.swift */,
 				19A09CFD194C5DBBBBBEDA10 /* SecretStore.swift */,
@@ -198,6 +209,7 @@
 			isa = PBXGroup;
 			children = (
 				41F2F01FAAB8DC77179654D1 /* EndpointFormUITests.swift */,
+				003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */,
 				59B82EAB47F74D4B9B57B769 /* PopoverUITests.swift */,
 				A8EA025C6FC55AF16321C6EE /* SettingsUITests.swift */,
 				D38626493699CDFA81CF0BFF /* UITestCase.swift */,
@@ -242,6 +254,7 @@
 				4226E59C5529BA2094C44102 /* EndpointFormView.swift */,
 				27FA637B785DAAA8CD7000E2 /* EndpointRowView.swift */,
 				966594168C240D41D40CEB85 /* EndpointStatsRowView.swift */,
+				7EA2A2720D7FEB22C484EA2A /* HealthStateStyle.swift */,
 				48748035BE57A316AB4A38F7 /* MenuBarIconView.swift */,
 				99625928DAA517E46B40E9CC /* PopoverContentView.swift */,
 				2EB8B4CD40431C3DE0AB1CA3 /* SettingsView.swift */,
@@ -257,6 +270,7 @@
 				CDCE13DAFEEABFE4AAA57A58 /* DailyStat.swift */,
 				FEE21C47ACEF036897E38750 /* Endpoint.swift */,
 				6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */,
+				FA1B66AAA42A3870CFD251BD /* HealthStandard.swift */,
 				A2216B2976313E4FDD3AACBF /* VersionCheck.swift */,
 			);
 			path = Models;
@@ -281,6 +295,7 @@
 				B89F5BDFB7EDF8ED278B11F9 /* HealthCheckServiceCertificateTests.swift */,
 				F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */,
 				E503AAEABFC5C2B373459AD4 /* HealthHistoryStoreTests.swift */,
+				E39F5C0C6304CE58ECF506C1 /* HealthStandardTests.swift */,
 				B9000BB26EE58E67899B8334 /* NotificationServiceTests.swift */,
 				0D9833ABF2C0C70DEB4919D2 /* UpdaterViewModelTests.swift */,
 				87CDA679252CC924F6AB6DE1 /* VersionCheckTests.swift */,
@@ -454,6 +469,7 @@
 				4D08272626D5CFCFAEEC4522 /* HealthCheckServiceCertificateTests.swift in Sources */,
 				C0E8D2EC3356DB7FCBC51B3B /* HealthCheckServiceTests.swift in Sources */,
 				072A39C9E79C29B1532B7ED9 /* HealthHistoryStoreTests.swift in Sources */,
+				C97CC7103C719C511962CB5E /* HealthStandardTests.swift in Sources */,
 				3FC9A37982947905867408FA /* NotificationServiceTests.swift in Sources */,
 				4D261E0830703EB31C5DBF6F /* UpdaterViewModelTests.swift in Sources */,
 				D719FD42398FA2719A33A305 /* VersionCheckTests.swift in Sources */,
@@ -474,6 +490,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3B86B8EF3F5C18076278B52 /* EndpointFormUITests.swift in Sources */,
+				9092041455E51E9D4CA2C681 /* HealthStandardUITests.swift in Sources */,
 				C000DFC585881158D5AA749C /* PopoverUITests.swift in Sources */,
 				29A9D15F05E309E9A0A66073 /* SettingsUITests.swift in Sources */,
 				317A01D07A0D69A56A683A87 /* UITestCase.swift in Sources */,
@@ -501,7 +518,10 @@
 				E3D8FD8E147162C23DE97C22 /* EndpointStore.swift in Sources */,
 				7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */,
 				CFB40F8394FBA708BA20E201 /* HealthCheckService.swift in Sources */,
+				849D6E29D201AC90934C1F18 /* HealthDetailsStore.swift in Sources */,
 				B8C0F84C166C45CC9712CC6F /* HealthHistoryStore.swift in Sources */,
+				22049EE8B3160B41F90A53C9 /* HealthStandard.swift in Sources */,
+				D8A12BBACD322363958A0003 /* HealthStateStyle.swift in Sources */,
 				3C1D6920056793ACFC5377AF /* MenuBarIconView.swift in Sources */,
 				9CE36EBB1363579D0EDFC5B6 /* NotificationService.swift in Sources */,
 				241413E6175DE34C06384FF5 /* PopoverContentView.swift in Sources */,

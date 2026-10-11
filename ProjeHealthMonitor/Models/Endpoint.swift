@@ -141,10 +141,15 @@ struct Endpoint: Codable, Identifiable, Equatable {
     /// means never configured; a disabled-but-kept config is `isEnabled == false`.
     var versionCheck: VersionCheckConfig?
 
+    /// The endpoint implements the Zext Health Standard (`zext-health/v1`): its JSON `status`
+    /// (pass/warn/fail) decides health instead of `expectedStatusCode`, warn shows as degraded, and
+    /// version/components are read from the same response. HTTP only. See `HealthStandard`.
+    var healthStandard: Bool = false
+
     init(id: UUID = UUID(), name: String, url: URL, checkType: CheckType = .http, expectedStatusCode: Int = 200,
          checkIntervalOverride: TimeInterval? = nil, snoozedUntil: Date? = nil, jsonAssertions: [JSONAssertion] = [],
          authType: AuthType = .none, authUsername: String? = nil, authHeaderName: String? = nil,
-         group: String? = nil, versionCheck: VersionCheckConfig? = nil) {
+         group: String? = nil, versionCheck: VersionCheckConfig? = nil, healthStandard: Bool = false) {
         self.id = id
         self.name = name
         self.url = url
@@ -158,6 +163,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         self.authHeaderName = authHeaderName
         self.group = group
         self.versionCheck = versionCheck
+        self.healthStandard = healthStandard
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -167,6 +173,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         case authType, authUsername, authHeaderName
         case group
         case versionCheck
+        case healthStandard
     }
 
     init(from decoder: Decoder) throws {
@@ -183,6 +190,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         authHeaderName = try container.decodeIfPresent(String.self, forKey: .authHeaderName)
         group = try container.decodeIfPresent(String.self, forKey: .group)
         versionCheck = try container.decodeIfPresent(VersionCheckConfig.self, forKey: .versionCheck)
+        healthStandard = try container.decodeIfPresent(Bool.self, forKey: .healthStandard) ?? false
 
         if let assertions = try container.decodeIfPresent([JSONAssertion].self, forKey: .jsonAssertions) {
             jsonAssertions = assertions
@@ -209,6 +217,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(authHeaderName, forKey: .authHeaderName)
         try container.encodeIfPresent(group, forKey: .group)
         try container.encodeIfPresent(versionCheck, forKey: .versionCheck)
+        try container.encode(healthStandard, forKey: .healthStandard)
     }
 }
 
