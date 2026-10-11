@@ -40,3 +40,106 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM=""
+
+  # Proves the Release (Developer ID) build still signs — and, on main, still notarizes — before
+  # anyone tags a version. Uses the same composite action as release.yml, so it can't drift from
+  # what a release actually does. Added after v0.1.17 failed at tag time on a signing problem
+  # (an App Group that needed a provisioning profile) that no PR check had exercised.
+  release-build:
+    runs-on: macos-14
+    steps:
+      # Dependabot and fork PRs don't get repository secrets; skip with a notice rather than
+      # failing them for something they can't fix.
+      - name: Check signing secrets
+        id: secrets
+        env:
+          P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+        run: |
+          if [ -n "$P12" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release build check skipped::Signing secrets aren't available to this run (Dependabot or fork PR)."
+          fi
+
+      - name: Checkout
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/checkout@v7
+
+      - name: Install XcodeGen
+        if: steps.secrets.outputs.available == 'true'
+        run: brew install xcodegen
+
+      - name: Select latest available Xcode
+        if: steps.secrets.outputs.available == 'true'
+        run: |
+          LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+
+      - name: Generate Xcode project
+        if: steps.secrets.outputs.available == 'true'
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        if: steps.secrets.outputs.available == 'true'
+        run: xcodebuild -resolvePackageDependencies -project ProjeHealthMonitor.xcodeproj -scheme ProjeHealthMonitor -derivedDataPath build
+
+      - name: Build and sign (Release, Developer ID)
+        if: steps.secrets.outputs.available == 'true'
+        id: build
+        uses: ./.github/actions/build-signed-app
+        with:
+          p12-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          build-number: ${{ github.run_number }}
+
+      # Guards the v0.1.17 class of failure from the other side too: the signed app and widget
+      # must carry exactly the App Group the code reads (WidgetDashboard.suiteName), signed by
+      # our Developer ID team with the hardened runtime.
+      - name: Verify signature and entitlements
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          APP_PATH: ${{ steps.build.outputs.app-path }}
+        run: |
+          set -euo pipefail
+          WIDGET_PATH="$APP_PATH/Contents/PlugIns/HealthMonitorWidget.appex"
+          EXPECTED_GROUP=$(sed -nE 's/.*static let suiteName = "([^"]+)".*/\1/p' ProjeHealthMonitor/Shared/WidgetData.swift)
+          echo "Expected App Group (WidgetDashboard.suiteName): $EXPECTED_GROUP"
+          [ -n "$EXPECTED_GROUP" ] || { echo "::error::Couldn't read WidgetDashboard.suiteName"; exit 1; }
+
+          for TARGET in "$APP_PATH" "$WIDGET_PATH"; do
+            INFO=$(codesign -dv --verbose=2 "$TARGET" 2>&1) || { echo "::error::$(basename "$TARGET") is not signed"; exit 1; }
+            # Here-strings, not `echo | grep -q`: with pipefail, grep -q exiting early can SIGPIPE
+            # the echo and fail the check spuriously.
+            grep -q "Authority=Developer ID Application" <<< "$INFO" || { echo "::error::$(basename "$TARGET") is not Developer ID signed"; exit 1; }
+            grep -q "TeamIdentifier=4MSY72K4VX" <<< "$INFO" || { echo "::error::$(basename "$TARGET") has the wrong team"; exit 1; }
+            grep -q "flags=.*runtime" <<< "$INFO" || { echo "::error::$(basename "$TARGET") lacks the hardened runtime"; exit 1; }
+
+            # PlistBuddy, not `plutil -extract`: the entitlement key contains dots, which plutil
+            # treats as key-path separators.
+            ENTITLEMENTS="$RUNNER_TEMP/entitlements.plist"
+            codesign -d --entitlements - --xml "$TARGET" > "$ENTITLEMENTS" 2>/dev/null
+            APP_GROUPS=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.application-groups" "$ENTITLEMENTS" 2>/dev/null \
+              | sed -nE 's/^ +([^ ].*)$/\1/p' | tr '\n' ' ' | sed 's/ $//')
+            echo "$(basename "$TARGET") App Groups: [$APP_GROUPS]"
+            [ "$APP_GROUPS" = "$EXPECTED_GROUP" ] || {
+              echo "::error::$(basename "$TARGET") App Groups [$APP_GROUPS] don't match WidgetDashboard.suiteName ($EXPECTED_GROUP)"
+              exit 1
+            }
+          done
+          echo "Signature and entitlements OK"
+
+      # Notarization takes a few minutes and talks to Apple, so it runs on main only: every
+      # merge proves main is releasable before a tag is pushed.
+      - name: Notarize (main only)
+        if: steps.secrets.outputs.available == 'true' && github.event_name == 'push'
+        uses: ./.github/actions/notarize-app
+        with:
+          app-path: ${{ steps.build.outputs.app-path }}
+          api-key-p8-base64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+
+      - name: Remove signing keychain
+        if: always() && steps.secrets.outputs.available == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
