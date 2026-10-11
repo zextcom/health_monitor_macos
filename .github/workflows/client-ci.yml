@@ -1,0 +1,30 @@
+name: Client CI
+
+# Covers the Expo app in client/ (mobile + the web client deployed to health.zext.dev).
+# The macOS app is ci.yml, the backend backend-ci.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  client-test:
+    name: Client Type Check & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: cd client && npx tsc --noEmit
+      - name: Unit tests
+        run: cd client && npm test
+      # The deploy workflow ships this exact web export; prove it still builds.
+      - name: Web export
+        run: cd client && EXPO_PUBLIC_API_URL=https://health.zext.dev npx expo export --platform web --output-dir "$RUNNER_TEMP/client-dist"

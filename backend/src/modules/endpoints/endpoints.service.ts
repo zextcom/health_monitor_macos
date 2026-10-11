@@ -152,6 +152,10 @@ export async function updateEndpoint(
         target: endpointSecrets.endpointId,
         set: { encryptedValue: encrypted, iv, updatedAt: new Date() },
       });
+  } else if (rest.authType === 'none') {
+    // Switching auth off: drop the stored secret rather than leaving it orphaned (the version
+    // check's own secret follows the same rule in syncVersionSecret).
+    await db.delete(endpointSecrets).where(eq(endpointSecrets.endpointId, endpointId));
   }
 
   const [updated] = await db

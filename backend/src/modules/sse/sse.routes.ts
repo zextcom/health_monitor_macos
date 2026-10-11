@@ -7,6 +7,12 @@ export async function sseRoutes(fastify: FastifyInstance) {
   fastify.get('/sse/checks', async (request, reply) => {
     const userId = request.user.id;
 
+    // Writing to the raw socket bypasses Fastify's reply pipeline, so headers set by earlier hooks
+    // (CORS from @fastify/cors) must be carried over explicitly — otherwise a cross-origin client
+    // such as the Expo web dev server can't read the stream.
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) reply.raw.setHeader(name, value);
+    }
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',

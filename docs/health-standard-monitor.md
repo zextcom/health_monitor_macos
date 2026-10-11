@@ -118,7 +118,13 @@ backend `recordVersionResult`) without an extra request:
   - The standard evaluation happens inside the health check job.
   - Storing components and the auto-tracked version runs in a separate `try` after the result is recorded, so it can never alter or mask the health result (same pattern as the version check).
 
+## Mobile / web client
+
+- The add/edit endpoint form (`client/app/endpoint-form.tsx`) has the *Uses Zext Health Standard* toggle; when on, the expected status code is hidden.
+- Degraded is a distinct state (orange, warning-triangle icon) in every status badge, the dashboard summary, and the detail history markers (circle / triangle / square for healthy / degraded / down).
+- The detail screen shows a *Version* section (from `/versions`) and a *Components* section (from `/health-details`).
+- Status logic and form validation are pure functions in `client/src/logic/`, unit-tested and run in CI (`client-ci.yml`).
+
 ## Not in this iteration
 
-- The mobile (Expo) client form for the toggle. The backend API accepts `healthStandard` already.
 - A client library for services. The standard is small enough to implement by hand (see [health-standard.md](health-standard.md#8-how-to-implement)).
