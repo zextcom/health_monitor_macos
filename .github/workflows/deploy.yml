@@ -67,6 +67,17 @@ jobs:
             fi
             pm2 status
 
+      # Clear any leftovers of an earlier, interrupted upload so they can't mix into this release.
+      - name: Prepare web client upload
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -eu
+            rm -rf /var/www/health.zext.dev/_client_upload
+
       - name: Upload web client
         uses: appleboy/scp-action@v1
         with:
@@ -77,13 +88,33 @@ jobs:
           target: /var/www/health.zext.dev/_client_upload
           strip_components: 2
 
+      # Checks the upload is complete (index.html + every asset it references), then goes live with
+      # two directory renames (public → public.prev, upload → public) instead of emptying public/
+      # and copying into it, so the site is never served empty or half-copied. The script comes
+      # from the checkout the "Deploy backend" step just pulled.
       - name: Swap web client files
+        id: swap
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            rm -rf /var/www/health.zext.dev/public/*
-            cp -r /var/www/health.zext.dev/_client_upload/* /var/www/health.zext.dev/public/
-            rm -rf /var/www/health.zext.dev/_client_upload
+            set -eu
+            bash /var/www/health.zext.dev/client/scripts/web-client-release.sh swap /var/www/health.zext.dev
+
+      # Checked from outside, the way a visitor sees it: the live index.html must reference this
+      # build's entry bundle, and that bundle must load.
+      - name: Verify web client
+        run: bash client/scripts/verify-web-client.sh https://health.zext.dev client/dist 60
+
+      - name: Roll back web client
+        if: failure() && steps.swap.outcome == 'success'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -eu
+            bash /var/www/health.zext.dev/client/scripts/web-client-release.sh rollback /var/www/health.zext.dev
