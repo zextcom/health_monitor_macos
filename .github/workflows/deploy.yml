@@ -45,7 +45,13 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # `set -eu`: any failing step (pull, install, build, migrate) stops the deploy before the
+          # restart and fails the job, instead of restarting onto a stale build and reporting green.
+          # verify-deploy.sh then gates on /health answering 200 with pass/warn, on the running
+          # releaseId matching the commit just pulled (proves the restarted process runs the new
+          # code), and on both pm2 apps being online — it fails the job otherwise.
           script: |
+            set -eu
             cd /var/www/health.zext.dev
             git pull origin main
 
@@ -55,8 +61,10 @@ jobs:
             npx drizzle-kit migrate
             pm2 restart health-api health-worker
 
-            sleep 3
-            curl -f http://localhost:3030/health || echo "Health check failed!"
+            if ! bash scripts/verify-deploy.sh http://localhost:3030 "$(git rev-parse HEAD)" 60; then
+              pm2 logs health-api health-worker --lines 40 --nostream || true
+              exit 1
+            fi
             pm2 status
 
       - name: Upload web client
