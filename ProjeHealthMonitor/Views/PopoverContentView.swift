@@ -32,7 +32,7 @@ struct PopoverContentView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                 } else {
-                    ScrollView {
+                    PopoverList {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(groupedSections) { section in
                                 if groupedSections.count > 1 {
@@ -50,7 +50,6 @@ struct PopoverContentView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 4)
                     }
-                    .frame(maxHeight: 320)
                 }
             }
 
@@ -103,7 +102,7 @@ struct PopoverContentView: View {
 
             searchField
 
-            ScrollView {
+            PopoverList {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(filteredBackendEndpoints) { endpoint in
                         BackendEndpointRowView(endpoint: endpoint)
@@ -115,7 +114,6 @@ struct PopoverContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
             }
-            .frame(maxHeight: 320)
         } else if backendSync.isSyncing {
             VStack(spacing: 8) {
                 ProgressView()
@@ -190,5 +188,45 @@ struct PopoverContentView: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 2)
+    }
+}
+
+/// Scrolling list area of the popover, sized to its content up to `maxHeight`.
+///
+/// A bare `ScrollView` with `.frame(maxHeight:)` has no height of its own to offer, and in the
+/// live `MenuBarExtra` window panel (macOS 26) it collapsed to zero — the popover showed only the
+/// search field and the footer. The content's height is measured instead and handed to the
+/// `ScrollView` explicitly, so the panel never has to guess.
+struct PopoverList<Content: View>: View {
+    nonisolated static var maxHeight: CGFloat { 320 }
+
+    @ViewBuilder let content: () -> Content
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        ScrollView {
+            content()
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: PopoverListHeightKey.self, value: proxy.size.height)
+                    }
+                )
+        }
+        .onPreferenceChange(PopoverListHeightKey.self) { contentHeight = $0 }
+        .frame(height: Self.height(forContent: contentHeight))
+    }
+
+    /// Until the content has been measured, reserve the full height rather than none, so the
+    /// first layout can't collapse.
+    nonisolated static func height(forContent measured: CGFloat?) -> CGFloat {
+        guard let measured, measured > 0 else { return maxHeight }
+        return min(measured, maxHeight)
+    }
+}
+
+private struct PopoverListHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
