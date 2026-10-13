@@ -45,26 +45,18 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # `set -eu`: any failing step (pull, install, build, migrate) stops the deploy before the
-          # restart and fails the job, instead of restarting onto a stale build and reporting green.
-          # verify-deploy.sh then gates on /health answering 200 with pass/warn, on the running
-          # releaseId matching the commit just pulled (proves the restarted process runs the new
-          # code), and on both pm2 apps being online — it fails the job otherwise.
+          # Records the deployed commit before pulling so deploy-backend.sh can roll back to it:
+          # install → build → migrate → restart → verify-deploy.sh (/health 200 with pass/warn,
+          # releaseId == new commit, pm2 apps online). On any failure it resets `main` to the
+          # previous commit, rebuilds, restarts and verifies that release, and fails the job either
+          # way so a rolled-back deploy still shows red. If this step fails, the later web client
+          # steps are skipped, so the site keeps serving the previous web release too.
           script: |
             set -eu
             cd /var/www/health.zext.dev
+            PREV=$(git rev-parse HEAD)
             git pull origin main
-
-            cd backend
-            pnpm install --frozen-lockfile
-            pnpm run build
-            npx drizzle-kit migrate
-            pm2 restart health-api health-worker
-
-            if ! bash scripts/verify-deploy.sh http://localhost:3030 "$(git rev-parse HEAD)" 60; then
-              pm2 logs health-api health-worker --lines 40 --nostream || true
-              exit 1
-            fi
+            bash backend/scripts/deploy-backend.sh /var/www/health.zext.dev "$PREV"
             pm2 status
 
       # Clear any leftovers of an earlier, interrupted upload so they can't mix into this release.
