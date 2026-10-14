@@ -55,6 +55,8 @@ targets:
     dependencies:
       - package: Sparkle
       - package: KeyboardShortcuts
+      - target: HealthMonitorWidget
+        embed: true
     postBuildScripts:
       - name: Stamp git commit
         basedOnDependencyAnalysis: false
@@ -64,8 +66,6 @@ targets:
           # the UI) when git isn't available, e.g. a source tarball.
           HASH=$(git -C "$SRCROOT" rev-parse --short=7 HEAD 2>/dev/null || true)
           /usr/libexec/PlistBuddy -c "Set :GitCommit $HASH" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-      - target: HealthMonitorWidget
-        embed: true
     info:
       path: ProjeHealthMonitor/Info.plist
       properties:

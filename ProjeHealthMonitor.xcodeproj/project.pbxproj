@@ -39,6 +39,7 @@
 		7518E34BAF856BECCC6AFA8E /* EndpointFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4226E59C5529BA2094C44102 /* EndpointFormView.swift */; };
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
 		781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 9206A9B4E24ED8C577CD938F /* Sparkle */; };
+		7D0B5CAC10CF708A7667C298 /* HealthMonitorWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0D1BC14F0825A3D74DF9488D /* HealthMonitorWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		849D6E29D201AC90934C1F18 /* HealthDetailsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B511158A3E93BB39654D450 /* HealthDetailsStore.swift */; };
 		8AC1B68D72D3FABBA8DB611D /* BackendModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964B1659E52DBB5530768B6E /* BackendModels.swift */; };
 		9092041455E51E9D4CA2C681 /* HealthStandardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */; };
@@ -82,7 +83,28 @@
 			remoteGlobalIDString = 7BFF51B90F6CC4E791BCF188;
 			remoteInfo = ProjeHealthMonitor;
 		};
+		A58084238FB4C2A9952657A8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6748F4B66E5A8ED7FD9FD9BA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 981C1DE60A1E09F5C7373615;
+			remoteInfo = HealthMonitorWidget;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		33B8FFBA0E42205866DDE479 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7D0B5CAC10CF708A7667C298 /* HealthMonitorWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStandardUITests.swift; sourceTree = "<group>"; };
@@ -340,11 +362,13 @@
 				E42901FB4B0DC4BE3830958B /* Sources */,
 				E50B28B01C038E9BA3CD189F /* Resources */,
 				22258DB3FA4E25C9A3055147 /* Frameworks */,
+				33B8FFBA0E42205866DDE479 /* Embed Foundation Extensions */,
 				9113DA6008E7211E8D9F6FA0 /* Stamp git commit */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D32BED1B5C281309AA651C02 /* PBXTargetDependency */,
 			);
 			name = ProjeHealthMonitor;
 			packageProductDependencies = (
@@ -565,6 +589,11 @@
 			isa = PBXTargetDependency;
 			target = 7BFF51B90F6CC4E791BCF188 /* ProjeHealthMonitor */;
 			targetProxy = 15C2D62758597D1804083DA0 /* PBXContainerItemProxy */;
+		};
+		D32BED1B5C281309AA651C02 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 981C1DE60A1E09F5C7373615 /* HealthMonitorWidget */;
+			targetProxy = A58084238FB4C2A9952657A8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
