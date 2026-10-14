@@ -212,7 +212,11 @@ struct PopoverList<Content: View>: View {
                     }
                 )
         }
-        .onPreferenceChange(PopoverListHeightKey.self) { contentHeight = $0 }
+        // The closure is `@Sendable` on older SDKs (Xcode 16.2 on CI), so hop to the main actor
+        // explicitly instead of mutating `@State` from it.
+        .onPreferenceChange(PopoverListHeightKey.self) { height in
+            Task { @MainActor in contentHeight = height }
+        }
         .frame(height: Self.height(forContent: contentHeight))
     }
 
