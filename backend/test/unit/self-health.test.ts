@@ -19,19 +19,13 @@ describe('buildSelfHealth()', () => {
       now: fixedNow,
     });
     expect(httpStatus).toBe(200);
-    expect(body).toMatchObject({
+    // Public endpoint: overall status, version and release only, never per-dependency details.
+    expect(body).toEqual({
       status: 'pass',
       version: '0.1.0',
       releaseId: 'abcdef1234',
       serviceId: 'health-monitor-api',
-      checks: {
-        'postgres:responseTime': [
-          { componentType: 'datastore', status: 'pass', observedUnit: 'ms', time: '2026-10-11T09:30:00.000Z' },
-        ],
-        'redis:responseTime': [{ componentType: 'datastore', status: 'pass', observedUnit: 'ms' }],
-      },
     });
-    expect(body.output).toBeUndefined();
 
     const report = validateHealthResponse({ httpStatus, body });
     expect(report.errors).toEqual([]);

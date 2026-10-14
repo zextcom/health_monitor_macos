@@ -97,13 +97,13 @@ describe('standards routes', () => {
       expect(body.warnings.map((w: { rule: string }) => w.rule)).toEqual(
         expect.arrayContaining(['content-type', 'version', 'release-id', 'no-sensitive-data']),
       );
-      expect(body.observed).toEqual({ httpStatus: 200, contentType: 'application/json', checkCount: 0 });
+      expect(body.observed).toEqual({ httpStatus: 200, contentType: 'application/json' });
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('accepts a pasted body that is already a JSON object', async () => {
       const res = await validate({ response: { httpStatus: 503, body: HEALTH_STANDARD_EXAMPLES.fail.body } });
-      expect(res.json()).toMatchObject({ valid: true, errors: [], warnings: [], observed: { status: 'fail', checkCount: 2 } });
+      expect(res.json()).toMatchObject({ valid: true, errors: [], warnings: [], observed: { status: 'fail' } });
     });
 
     it('fetches a URL and validates headers, timing and body', async () => {
@@ -123,7 +123,6 @@ describe('standards routes', () => {
           status: 'warn',
           version: '1.4.2',
           releaseId: '9f2c1ab7e4d3',
-          checkCount: 2,
         },
       });
       expect(typeof body.observed.responseTimeMs).toBe('number');
@@ -150,7 +149,7 @@ describe('standards routes', () => {
         valid: false,
         errors: [{ path: 'http', rule: 'fetch', message: 'Could not fetch the URL: getaddrinfo ENOTFOUND service.test' }],
         warnings: [],
-        observed: { httpStatus: 0, contentType: null, checkCount: 0 },
+        observed: { httpStatus: 0, contentType: null },
       });
     });
 
@@ -199,8 +198,9 @@ describe('standards routes', () => {
       const body = res.json();
       expect(body.status).toBe('pass');
       expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
-      expect(Object.keys(body.checks)).toEqual(['postgres:responseTime', 'redis:responseTime']);
-      expect(body.checks['postgres:responseTime'][0]).toMatchObject({ status: 'pass', observedUnit: 'ms' });
+      // Public endpoint: no per-dependency details, only the overall status.
+      expect(body).not.toHaveProperty('checks');
+      expect(Object.keys(body).filter((key) => !['status', 'version', 'releaseId', 'serviceId'].includes(key))).toEqual([]);
     });
 
     it('returns 503 fail when a dependency is down', async () => {
@@ -215,8 +215,7 @@ describe('standards routes', () => {
         expect(res.statusCode).toBe(503);
         const body = res.json();
         expect(body).toMatchObject({ status: 'fail', output: 'redis unreachable' });
-        expect(body.checks['redis:responseTime'][0].status).toBe('fail');
-        expect(body.checks['postgres:responseTime'][0].status).toBe('pass');
+        expect(body).not.toHaveProperty('checks');
       } finally {
         await failing.close();
       }

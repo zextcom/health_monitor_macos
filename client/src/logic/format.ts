@@ -1,9 +1,8 @@
 /**
- * Pure formatting helpers for the version and components sections of the endpoint detail screen.
+ * Pure formatting helpers for the version and reported-health sections of the endpoint detail screen.
  */
 import type {
   Endpoint,
-  HealthComponent,
   HealthDetailsResponse,
   HealthStatus,
   VersionHistoryResponse,
@@ -85,40 +84,18 @@ export function formatSeenRange(entry: { firstSeenAt: string; lastSeenAt: string
   return first === last ? first : `${first} – ${last}`;
 }
 
-/** Observed value plus unit, e.g. `42 ms`, `true`, `0.25 %`. `null` when nothing was observed. */
-export function formatObservedValue(component: Pick<HealthComponent, 'observedValue' | 'observedUnit'>): string | null {
-  const { observedValue, observedUnit } = component;
-  if (observedValue === undefined || observedValue === null || observedValue === '') return null;
-  const value = typeof observedValue === 'number' ? formatNumber(observedValue) : String(observedValue);
-  const unit = observedUnit?.trim();
-  return unit ? `${value} ${unit}` : value;
-}
-
-function formatNumber(value: number): string {
-  if (Number.isInteger(value)) return String(value);
-  // Up to 3 decimals, without trailing zeros: 12.5 → "12.5", 0.12345 → "0.123".
-  return String(Number(value.toFixed(3)));
-}
-
-/** Component title: the key, plus the component id when it adds information. */
-export function componentTitle(component: Pick<HealthComponent, 'key' | 'componentId'>): string {
-  const id = component.componentId?.trim();
-  return id && id !== component.key ? `${component.key} (${id})` : component.key;
-}
-
 export function healthStatusLabel(status: HealthStatus): string {
   if (status === 'pass') return 'Pass';
   if (status === 'warn') return 'Warn';
   return 'Fail';
 }
 
-/** Components section: shown for health-standard endpoints, or whenever there's data to show. */
-export function shouldShowComponents(
+/** Reported-health section: shown for health-standard endpoints, or whenever a report was recorded. */
+export function shouldShowHealthReport(
   details: HealthDetailsResponse | null,
   endpoint: Pick<Endpoint, 'healthStandard'>,
 ): boolean {
-  if (endpoint.healthStandard === true || details?.healthStandard === true) return true;
-  return (details?.latest?.components.length ?? 0) > 0;
+  return endpoint.healthStandard === true || details?.healthStandard === true || details?.latest != null;
 }
 
 /** Version section: shown when a source applies or there's recorded history. */

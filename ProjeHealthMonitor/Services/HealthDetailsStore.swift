@@ -1,9 +1,9 @@
 import Foundation
 
-/// Latest parsed health-standard response per endpoint (status, version, component checks), shown
-/// in `EndpointDetailView`'s Components section. Deliberately in-memory only and one entry per
-/// endpoint: components are a "right now" view, so they never bloat persisted history and are
-/// simply refilled by the first check after a relaunch.
+/// Latest parsed health-standard response per endpoint (status, reason, version), shown in
+/// `EndpointDetailView`'s Reported health section. Deliberately in-memory only and one entry per
+/// endpoint: it is a "right now" view, so it never bloats persisted history and is simply refilled
+/// by the first check after a relaunch.
 @MainActor
 final class HealthDetailsStore: ObservableObject {
     struct Entry: Equatable {

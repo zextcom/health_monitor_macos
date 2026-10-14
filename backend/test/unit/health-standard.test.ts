@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   HEALTH_STANDARD_DOCUMENT,
   HEALTH_STANDARD_EXAMPLES,
+  HEALTH_STANDARD_FIELDS,
   HEALTH_STANDARD_RULES,
   HEALTH_STANDARD_SCHEMA,
   HEALTH_STATUSES,
@@ -58,68 +59,40 @@ describe('parseHealthBody()', () => {
     expect(parseHealthBody({ status: 'PASS' })).toMatchObject({ ok: false });
   });
 
-  it('flattens checks leniently, skipping malformed entries', () => {
-    const result = parseHealthBody({
-      status: 'warn',
-      version: '1.0',
-      releaseId: 123456789,
-      checks: {
-        'db:responseTime': [
-          { status: 'pass', observedValue: 5, observedUnit: 'ms', componentType: 'datastore' },
-          { status: 'bogus' },
-          'not-an-object',
-        ],
-        'disk:utilization': [{ status: 'warn', observedValue: 91, observedUnit: 'percent', output: 'Disk almost full' }],
-        broken: 'not-an-array',
-      },
+  it('reads the standard fields leniently', () => {
+    const result = parseHealthBody({ status: 'warn', version: '1.0', releaseId: 123456789, output: ' Cache unavailable ' });
+    expect(result).toEqual({
+      ok: true,
+      value: { status: 'warn', version: '1.0', releaseId: '123456789', output: 'Cache unavailable' },
     });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.version).toBe('1.0');
-    expect(result.value.releaseId).toBe('123456789');
-    expect(result.value.components).toEqual([
-      { key: 'db:responseTime', status: 'pass', observedValue: 5, observedUnit: 'ms', componentType: 'datastore' },
-      { key: 'disk:utilization', status: 'warn', observedValue: 91, observedUnit: 'percent', output: 'Disk almost full' },
-    ]);
   });
 
-  it('caps components and clips long text', () => {
-    const entries = Array.from({ length: 80 }, () => ({ status: 'pass', output: 'x'.repeat(1000) }));
-    const result = parseHealthBody({ status: 'pass', checks: { 'a:b': entries } });
-    expect(result.ok && result.value.components).toHaveLength(50);
-    expect(result.ok && result.value.components[0].output?.length).toBe(300);
+  it('ignores a legacy "checks" block and any other extra field', () => {
+    const result = parseHealthBody({
+      status: 'pass',
+      checks: { 'db:responseTime': [{ status: 'fail' }], broken: 'not-an-array' },
+      php: '8.3.23',
+    });
+    expect(result).toEqual({ ok: true, value: { status: 'pass', version: null, releaseId: null, output: null } });
+  });
+
+  it('clips long output', () => {
+    const result = parseHealthBody({ status: 'fail', output: 'x'.repeat(1000) });
+    expect(result.ok && result.value.output?.length).toBe(300);
   });
 });
 
 describe('healthReason()', () => {
   it('is null for pass', () => {
-    expect(healthReason({ status: 'pass', output: 'ignored', components: [] })).toBeNull();
+    expect(healthReason({ status: 'pass', output: 'ignored' })).toBeNull();
   });
 
-  it('prefers top-level output', () => {
-    expect(
-      healthReason({ status: 'fail', output: 'DB down', components: [{ key: 'db:x', status: 'fail' }] }),
-    ).toBe('DB down');
-  });
-
-  it('falls back to the first non-pass check, with its output when present', () => {
-    expect(
-      healthReason({
-        status: 'warn',
-        output: null,
-        components: [
-          { key: 'db:x', status: 'pass' },
-          { key: 'disk:utilization', status: 'warn', output: 'Above 85%' },
-        ],
-      }),
-    ).toBe('disk:utilization: warn — Above 85%');
-    expect(healthReason({ status: 'fail', output: null, components: [{ key: 'db:x', status: 'fail' }] })).toBe(
-      'db:x: fail',
-    );
+  it('uses the top-level output', () => {
+    expect(healthReason({ status: 'fail', output: 'DB down' })).toBe('DB down');
   });
 
   it('falls back to a generic reason', () => {
-    expect(healthReason({ status: 'warn', output: null, components: [] })).toBe('Health status "warn"');
+    expect(healthReason({ status: 'warn', output: null })).toBe('Health status "warn"');
   });
 });
 
@@ -157,18 +130,16 @@ describe('evaluateStandardResponse() matrix', () => {
     expect(result).toMatchObject({ isHealthy: false, healthStatus: null, reason, parsed: null });
   });
 
-  it('uses output / first failing check as the reason', () => {
+  it('uses output as the reason', () => {
     expect(evaluateStandardResponse(503, body('fail', { output: 'DB unreachable' })).reason).toBe('DB unreachable');
-    expect(
-      evaluateStandardResponse(200, body('warn', { checks: { 'disk:utilization': [{ status: 'warn', output: '90%' }] } }))
-        .reason,
-    ).toBe('disk:utilization: warn — 90%');
+    expect(evaluateStandardResponse(200, body('warn', { output: 'Cache unavailable' })).reason).toBe('Cache unavailable');
   });
 
-  it('trusts the declared overall status even when checks disagree (the validator flags it)', () => {
+  it('trusts the declared overall status and ignores a legacy "checks" block', () => {
     const result = evaluateStandardResponse(200, body('pass', { checks: { 'db:x': [{ status: 'fail' }] } }));
     expect(result.isHealthy).toBe(true);
     expect(result.healthStatus).toBe('pass');
+    expect(result.parsed).toEqual({ status: 'pass', version: null, releaseId: null, output: null });
   });
 });
 
@@ -297,8 +268,25 @@ describe('published standard content', () => {
     expect(HEALTH_STANDARD_SCHEMA.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     expect(HEALTH_STANDARD_SCHEMA.required).toEqual(['status']);
     expect(HEALTH_STANDARD_SCHEMA.$defs.status.enum).toEqual(['pass', 'warn', 'fail']);
-    expect(HEALTH_STANDARD_SCHEMA.$defs.check.required).toEqual(['status']);
     expect(HEALTH_STANDARD_SCHEMA.additionalProperties).toBe(true);
+  });
+
+  it('no longer defines "checks" anywhere in the published content', () => {
+    expect(Object.keys(HEALTH_STANDARD_SCHEMA.properties)).not.toContain('checks');
+    expect(HEALTH_STANDARD_SCHEMA.$defs).not.toHaveProperty('check');
+    for (const example of Object.values(HEALTH_STANDARD_EXAMPLES)) {
+      expect(example.body).not.toHaveProperty('checks');
+    }
+    expect(HEALTH_STANDARD_RULES.map((rule) => rule.id)).not.toEqual(
+      expect.arrayContaining(['check-entries', 'worst-of-checks']),
+    );
+    expect(HEALTH_STANDARD_RULES.find((rule) => rule.id === 'no-checks')).toMatchObject({ level: 'should' });
+  });
+
+  it('every example field is one the validator treats as known', () => {
+    for (const example of Object.values(HEALTH_STANDARD_EXAMPLES)) {
+      expect(Object.keys(example.body).every((key) => HEALTH_STANDARD_FIELDS.includes(key))).toBe(true);
+    }
   });
 
   it('document bundles everything under the standard id', () => {

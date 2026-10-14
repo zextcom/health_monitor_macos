@@ -123,7 +123,7 @@ function fetchFailureReport(message: string): ValidationReport {
     valid: false,
     errors: [{ path: 'http', rule: 'fetch', message }],
     warnings: [],
-    observed: { httpStatus: 0, contentType: null, checkCount: 0 },
+    observed: { httpStatus: 0, contentType: null },
   };
 }
 

@@ -29,12 +29,9 @@ export interface SelfHealthResponse {
   body: Record<string, unknown>;
 }
 
-interface CheckEntry {
-  componentType: 'datastore';
+/** Outcome of one probe. Only used to decide the overall status: it is never published per component. */
+interface ProbeResult {
   status: HealthStatus;
-  observedValue?: number;
-  observedUnit?: 'ms';
-  time: string;
   output?: string;
 }
 
@@ -54,46 +51,32 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function runProbe(name: string, probe: Probe, now: () => number): Promise<CheckEntry> {
+async function runProbe(name: string, probe: Probe): Promise<ProbeResult> {
   const start = performance.now();
-  const time = new Date(now()).toISOString();
   try {
     await withTimeout(probe(), PROBE_TIMEOUT_MS);
-    const elapsed = Math.round(performance.now() - start);
-    return {
-      componentType: 'datastore',
-      status: elapsed > PROBE_WARN_MS ? 'warn' : 'pass',
-      observedValue: elapsed,
-      observedUnit: 'ms',
-      time,
-      ...(elapsed > PROBE_WARN_MS ? { output: `${name} is slow` } : {}),
-    };
+    const elapsed = performance.now() - start;
+    return elapsed > PROBE_WARN_MS ? { status: 'warn', output: `${name} is slow` } : { status: 'pass' };
   } catch (error) {
     // Never echo the driver's error message: it can carry hostnames or connection details.
     const timedOut = error instanceof Error && error.message === 'timed out';
-    return { componentType: 'datastore', status: 'fail', time, output: timedOut ? `${name} timed out` : `${name} unreachable` };
+    return { status: 'fail', output: timedOut ? `${name} timed out` : `${name} unreachable` };
   }
 }
 
 export async function buildSelfHealth(deps: SelfHealthDeps): Promise<SelfHealthResponse> {
-  const now = deps.now ?? Date.now;
   const names = Object.keys(deps.probes);
-  const entries = await Promise.all(names.map((name) => runProbe(name, deps.probes[name], now)));
+  const results = await Promise.all(names.map((name) => runProbe(name, deps.probes[name])));
 
-  const checks: Record<string, CheckEntry[]> = {};
-  names.forEach((name, index) => {
-    checks[`${name}:responseTime`] = [entries[index]];
-  });
+  const status = worstStatus(results.map((result) => result.status));
+  const firstProblem = results.find((result) => result.status === status && status !== 'pass');
 
-  const status = worstStatus(entries.map((entry) => entry.status));
-  const firstProblem = entries.find((entry) => entry.status === status && status !== 'pass');
-
+  // Public endpoint: overall status and a short reason only, never per-dependency details.
   const body: Record<string, unknown> = { status };
   if (deps.version) body.version = deps.version;
   if (deps.releaseId) body.releaseId = deps.releaseId;
   body.serviceId = 'health-monitor-api';
   if (firstProblem?.output) body.output = firstProblem.output;
-  body.checks = checks;
 
   return { httpStatus: HTTP_STATUS_FOR[status], body };
 }

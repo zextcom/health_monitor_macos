@@ -38,7 +38,6 @@ describe('validateHealthResponse()', () => {
           status: 'pass',
           version: '1.0.0',
           releaseId: 'abc1234',
-          checkCount: 0,
         },
       });
     });
@@ -52,17 +51,19 @@ describe('validateHealthResponse()', () => {
       expect(validate({ contentType: 'Application/Health+JSON; charset=utf-8' }).warnings).toEqual([]);
     });
 
-    it('allows unknown extra fields (forward compatible)', () => {
-      expect(validate({ body: { ...good, links: { about: 'https://x.test' }, custom: 1 } }).warnings).toEqual([]);
+    it('accepts every field the standard defines without warnings', () => {
+      const body = {
+        ...good,
+        serviceId: 'billing-api',
+        description: 'Billing API',
+        notes: ['note'],
+      };
+      expect(validate({ body }).warnings).toEqual([]);
+      expect(validate({ httpStatus: 503, body: { ...body, status: 'fail', output: 'Database unreachable' } }).warnings).toEqual([]);
     });
 
-    it('reports response time and check count when known', () => {
-      const report = validate({
-        responseTimeMs: 42,
-        body: { ...good, checks: { 'db:responseTime': [{ status: 'pass' }, { status: 'pass' }], 'disk:utilization': [] } },
-      });
-      expect(report.observed.responseTimeMs).toBe(42);
-      expect(report.observed.checkCount).toBe(2);
+    it('reports response time when known', () => {
+      expect(validate({ responseTimeMs: 42 }).observed.responseTimeMs).toBe(42);
     });
   });
 
@@ -115,63 +116,6 @@ describe('validateHealthResponse()', () => {
       expect(validate({ httpStatus, body }).errors).toEqual([]);
     });
 
-    it('overall status must be the worst of all checks', () => {
-      const body = {
-        ...good,
-        status: 'warn',
-        output: 'x',
-        checks: { 'db:responseTime': [{ status: 'pass' }], 'disk:utilization': [{ status: 'fail' }] },
-      };
-      const report = validate({ body });
-      expect(report.errors).toEqual([
-        {
-          path: '/status',
-          rule: 'worst-of-checks',
-          message: 'Overall status is "warn" but the worst check status is "fail".',
-        },
-      ]);
-    });
-
-    it('overall status better than needed is also an error (pass with a warn check)', () => {
-      const report = validate({ body: { ...good, checks: { 'disk:utilization': [{ status: 'warn' }] } } });
-      expect(rules(report.errors)).toEqual(['worst-of-checks']);
-    });
-
-    it('overall status worse than checks is an error too', () => {
-      const report = validate({
-        httpStatus: 503,
-        body: { ...good, status: 'fail', output: 'x', checks: { 'db:responseTime': [{ status: 'pass' }] } },
-      });
-      expect(rules(report.errors)).toEqual(['worst-of-checks']);
-    });
-
-    it('checks must be an object of arrays of objects with a valid status', () => {
-      expect(rules(validate({ body: { ...good, checks: [] } }).errors)).toEqual(['check-entries']);
-      expect(rules(validate({ body: { ...good, checks: 'x' } }).errors)).toEqual(['check-entries']);
-
-      const report = validate({
-        body: {
-          ...good,
-          checks: {
-            'a:b': { status: 'pass' },
-            'c:d': ['pass', { status: 'nope' }, {}],
-          },
-        },
-      });
-      expect(report.errors).toEqual([
-        expect.objectContaining({ path: '/checks/a:b', rule: 'check-entries' }),
-        expect.objectContaining({ path: '/checks/c:d/0', rule: 'check-entries' }),
-        expect.objectContaining({ path: '/checks/c:d/1/status', rule: 'check-entries' }),
-        expect.objectContaining({ path: '/checks/c:d/2/status', rule: 'check-entries' }),
-      ]);
-      expect(report.observed.checkCount).toBe(3);
-    });
-
-    it('escapes JSON Pointer segments', () => {
-      const report = validate({ body: { ...good, checks: { 'a/b~c:x': [{ status: 'bad' }] } } });
-      expect(report.errors[0].path).toBe('/checks/a~1b~0c:x/0/status');
-    });
-
     it('optional top-level fields must have the right types', () => {
       const report = validate({
         body: { ...good, version: 1, releaseId: 2, serviceId: {}, description: [], output: false, notes: 'x' },
@@ -193,50 +137,10 @@ describe('validateHealthResponse()', () => {
       expect(report.errors).toEqual([expect.objectContaining({ path: '/notes/1', rule: 'field-types' })]);
     });
 
-    it('check entry fields must have the right types', () => {
-      const report = validate({
-        body: {
-          ...good,
-          checks: {
-            'db:responseTime': [
-              {
-                status: 'pass',
-                componentId: 1,
-                componentType: true,
-                observedUnit: 5,
-                output: {},
-                observedValue: { nested: true },
-                time: 'yesterday',
-              },
-            ],
-          },
-        },
-      });
-      expect(report.errors.map((issue) => issue.path)).toEqual([
-        '/checks/db:responseTime/0/componentId',
-        '/checks/db:responseTime/0/componentType',
-        '/checks/db:responseTime/0/observedUnit',
-        '/checks/db:responseTime/0/output',
-        '/checks/db:responseTime/0/observedValue',
-        '/checks/db:responseTime/0/time',
-      ]);
-    });
-
-    it.each([['2026-10-11T09:30:00Z'], ['2026-10-11T09:30:00.123+02:00'], ['2026-10-11T09:30Z']])(
-      'accepts ISO 8601 time %s',
-      (time) => {
-        const report = validate({ body: { ...good, checks: { 'db:x': [{ status: 'pass', time }] } } });
-        expect(report.errors).toEqual([]);
-      },
-    );
-
-    it.each([[123], ['2026-10-11'], ['2026-10-11T09:30:00'], ['11/10/2026']])('rejects time %j', (time) => {
-      const report = validate({ body: { ...good, checks: { 'db:x': [{ status: 'pass', time }] } } });
-      expect(rules(report.errors)).toEqual(['field-types']);
-    });
-
-    it.each([[1.5], ['up'], [false]])('accepts observedValue %j', (observedValue) => {
-      expect(validate({ body: { ...good, checks: { 'db:x': [{ status: 'pass', observedValue }] } } }).errors).toEqual([]);
+    it('never errors on a legacy "checks" block, whatever it contains', () => {
+      for (const checks of [[], 'x', { 'db:responseTime': [{ status: 'nope' }] }, { 'a:b': { status: 'pass' } }]) {
+        expect(validate({ body: { ...good, checks } }).errors).toEqual([]);
+      }
     });
   });
 
@@ -282,10 +186,32 @@ describe('validateHealthResponse()', () => {
       expect(rules(validate({ httpStatus: 503, body: { ...good, status: 'fail' } }).warnings)).toEqual(['output-on-problem']);
     });
 
-    it('check names should be component:measurement', () => {
-      expect(validate({ body: { ...good, checks: { postgres: [{ status: 'pass' }] } } }).warnings).toEqual([
-        expect.objectContaining({ path: '/checks/postgres', rule: 'check-entries' }),
+    it('"checks" is public per-component detail: warned, not an error', () => {
+      const report = validate({ body: { ...good, checks: { 'postgres:responseTime': [{ status: 'pass' }] } } });
+      expect(report.valid).toBe(true);
+      expect(report.warnings).toEqual([expect.objectContaining({ path: '/checks', rule: 'no-checks' })]);
+    });
+
+    it('fields outside the standard are warned about, not rejected', () => {
+      const report = validate({ body: { ...good, php: '8.3.23', links: { about: 'https://x.test' } } });
+      expect(report.valid).toBe(true);
+      expect(report.warnings).toEqual([
+        expect.objectContaining({ path: '/php', rule: 'known-fields' }),
+        expect.objectContaining({ path: '/links', rule: 'known-fields' }),
       ]);
+    });
+
+    it('the "Saltqr" case: runtime versions in a component check are flagged as extra, public detail', () => {
+      const report = validate({
+        body: {
+          status: 'pass',
+          version: 'unknown',
+          serviceId: 'saltqr-app',
+          checks: { 'php:version': [{ componentType: 'runtime', status: 'pass', observedValue: '8.3.23' }] },
+        },
+      });
+      expect(report.valid).toBe(true);
+      expect(rules(report.warnings)).toEqual(expect.arrayContaining(['no-checks', 'release-id']));
     });
   });
 
@@ -309,9 +235,9 @@ describe('validateHealthResponse()', () => {
     });
 
     it.each([['10.0.0.12'], ['172.16.4.1'], ['172.31.255.255'], ['192.168.1.20:5432']])('private IPv4 %s', (ip) => {
-      const report = validate({ body: { ...good, checks: { 'db:x': [{ status: 'pass', componentId: ip }] } } });
+      const report = validate({ body: { ...good, description: ip } });
       expect(report.warnings).toEqual([
-        expect.objectContaining({ path: '/checks/db:x/0/componentId', message: expect.stringContaining('private IPv4') }),
+        expect.objectContaining({ path: '/description', message: expect.stringContaining('private IPv4') }),
       ]);
     });
 
@@ -323,12 +249,13 @@ describe('validateHealthResponse()', () => {
       'sensitive key %s',
       (key) => {
         const report = validate({ body: { ...good, [key]: 'x' } });
-        expect(report.warnings).toEqual([expect.objectContaining({ path: `/${key}`, rule: 'no-sensitive-data' })]);
+        expect(report.warnings).toContainEqual(expect.objectContaining({ path: `/${key}`, rule: 'no-sensitive-data' }));
       },
     );
 
-    it('does not treat component names in checks as sensitive keys', () => {
-      expect(validate({ body: { ...good, checks: { 'token-service:responseTime': [{ status: 'pass' }] } } }).warnings).toEqual([]);
+    it('does not treat component names in a legacy checks block as sensitive keys', () => {
+      const report = validate({ body: { ...good, checks: { 'token-service:responseTime': [{ status: 'pass' }] } } });
+      expect(rules(report.warnings)).toEqual(['no-checks']);
     });
 
     it('connection strings with credentials and stack traces', () => {

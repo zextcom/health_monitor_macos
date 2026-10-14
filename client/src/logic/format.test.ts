@@ -3,13 +3,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { VersionCheckConfig } from '../api/endpoints';
 import {
-  componentTitle,
   formatDateTime,
-  formatObservedValue,
   formatSeenRange,
   formatVersion,
   healthStatusLabel,
-  shouldShowComponents,
+  shouldShowHealthReport,
   shouldShowVersion,
   sortVersionHistory,
   versionSourceLabel,
@@ -137,35 +135,7 @@ describe('sortVersionHistory / formatSeenRange', () => {
   });
 });
 
-describe('formatObservedValue', () => {
-  it('formats numbers with units', () => {
-    assert.equal(formatObservedValue({ observedValue: 42, observedUnit: 'ms' }), '42 ms');
-    assert.equal(formatObservedValue({ observedValue: 12.5, observedUnit: '%' }), '12.5 %');
-    assert.equal(formatObservedValue({ observedValue: 0.12345, observedUnit: 's' }), '0.123 s');
-    assert.equal(formatObservedValue({ observedValue: 0 }), '0');
-  });
-
-  it('formats strings and booleans', () => {
-    assert.equal(formatObservedValue({ observedValue: 'connected' }), 'connected');
-    assert.equal(formatObservedValue({ observedValue: false }), 'false');
-    assert.equal(formatObservedValue({ observedValue: true, observedUnit: '  ' }), 'true');
-  });
-
-  it('is null when nothing was observed', () => {
-    assert.equal(formatObservedValue({}), null);
-    assert.equal(formatObservedValue({ observedValue: '', observedUnit: 'ms' }), null);
-    assert.equal(formatObservedValue({ observedUnit: 'ms' }), null);
-  });
-});
-
-describe('componentTitle / healthStatusLabel', () => {
-  it('adds the component id when it differs from the key', () => {
-    assert.equal(componentTitle({ key: 'postgres:responseTime' }), 'postgres:responseTime');
-    assert.equal(componentTitle({ key: 'postgres:responseTime', componentId: 'db-1' }), 'postgres:responseTime (db-1)');
-    assert.equal(componentTitle({ key: 'redis', componentId: 'redis' }), 'redis');
-    assert.equal(componentTitle({ key: 'redis', componentId: ' ' }), 'redis');
-  });
-
+describe('healthStatusLabel', () => {
   it('labels statuses', () => {
     assert.equal(healthStatusLabel('pass'), 'Pass');
     assert.equal(healthStatusLabel('warn'), 'Warn');
@@ -173,33 +143,27 @@ describe('componentTitle / healthStatusLabel', () => {
   });
 });
 
-describe('shouldShowComponents', () => {
-  const component = { key: 'db', status: 'pass' as const };
+describe('shouldShowHealthReport', () => {
   const latest = {
     status: 'pass' as const,
     version: null,
     releaseId: null,
     output: null,
     checkedAt: '2026-10-01T10:00:00.000Z',
-    components: [component],
   };
 
   it('shows for health-standard endpoints, even before data arrives', () => {
-    assert.equal(shouldShowComponents(null, { healthStandard: true }), true);
-    assert.equal(shouldShowComponents({ healthStandard: true, latest: null }, { healthStandard: false }), true);
+    assert.equal(shouldShowHealthReport(null, { healthStandard: true }), true);
+    assert.equal(shouldShowHealthReport({ healthStandard: true, latest: null }, { healthStandard: false }), true);
   });
 
-  it('shows when there is component data', () => {
-    assert.equal(shouldShowComponents({ healthStandard: false, latest }, { healthStandard: false }), true);
+  it('shows when a report was recorded', () => {
+    assert.equal(shouldShowHealthReport({ healthStandard: false, latest }, { healthStandard: false }), true);
   });
 
   it('hides otherwise', () => {
-    assert.equal(shouldShowComponents(null, { healthStandard: false }), false);
-    assert.equal(shouldShowComponents({ healthStandard: false, latest: null }, {}), false);
-    assert.equal(
-      shouldShowComponents({ healthStandard: false, latest: { ...latest, components: [] } }, {}),
-      false,
-    );
+    assert.equal(shouldShowHealthReport(null, { healthStandard: false }), false);
+    assert.equal(shouldShowHealthReport({ healthStandard: false, latest: null }, {}), false);
   });
 });
 

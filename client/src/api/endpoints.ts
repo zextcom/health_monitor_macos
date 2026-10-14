@@ -104,25 +104,13 @@ export interface VersionHistoryResponse {
   history: Array<{ value: string; firstSeenAt: string; lastSeenAt: string }>;
 }
 
-/** One flattened entry of a health-standard `checks` map (`key` is `component:measurement`). */
-export interface HealthComponent {
-  key: string;
-  status: HealthStatus;
-  componentId?: string;
-  componentType?: string;
-  observedValue?: number | string | boolean;
-  observedUnit?: string;
-  time?: string;
-  output?: string;
-}
-
+/** The backend still sends a deprecated, always-empty `components` array; it is ignored here. */
 export interface HealthDetails {
   status: HealthStatus;
   version: string | null;
   releaseId: string | null;
   output: string | null;
   checkedAt: string;
-  components: HealthComponent[];
 }
 
 export interface HealthDetailsResponse {

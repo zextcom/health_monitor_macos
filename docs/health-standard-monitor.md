@@ -9,7 +9,7 @@ endpoint. Endpoints without the flag behave exactly as before.
 | Field | Notes |
 |---|---|
 | Uses Zext Health Standard | Toggle, HTTP endpoints only. When on, the *Expected HTTP status code* field is hidden and ignored (its old value is kept). Saving a TCP endpoint always turns it off. |
-| Test Connection hint | If the test response looks standard (`Content-Type: application/health+json`, or a top-level `status` of `pass`/`warn`/`fail`), the form shows the parsed status, version and component count, plus a *Use Health Standard* button that turns the toggle on. With the toggle on, the same line shows how the response would be read, or why it is invalid. |
+| Test Connection hint | If the test response looks standard (`Content-Type: application/health+json`, or a top-level `status` of `pass`/`warn`/`fail`), the form shows the parsed status and version, plus a *Use Health Standard* button that turns the toggle on. With the toggle on, the same line shows how the response would be read, or why it is invalid. |
 | JSON assertions | Still available and ANDed on top of the standard evaluation. |
 
 ## Evaluation
@@ -24,10 +24,10 @@ The same rules run on macOS (`HealthStandard.evaluate`) and in the backend worke
   - `pass` → healthy
   - `warn` → healthy but **degraded**
   - `fail` → down
-- **Overall status:** the monitor trusts the declared overall `status` even if the checks disagree. The validator flags that mismatch, the monitor doesn't second-guess it.
-- **Reason** (warn or fail): the top-level `output` if present, else the first non-pass check as `"<key>: <status>[ — output]"`, else `Health status "<status>"`. For a degraded result the reason is stored in `failureReason`.
+- **Overall status:** the monitor trusts the declared overall `status`. The standard no longer has per-component `checks`, so a service that still sends them is not second-guessed: they are ignored (the validator warns the service owner).
+- **Reason** (warn or fail): the top-level `output` if present, else `Health status "<status>"`. For a degraded result the reason is stored in `failureReason`.
 - **JSON assertions:** applied after a `pass`/`warn` body (AND). A failing assertion makes the result down with the assertion's reason. A `fail` body keeps its own reason.
-- **Leniency:** malformed check entries are skipped rather than failing the endpoint. Strict checking is the validator's job (see *API*).
+- **Leniency:** unknown fields (including a legacy `checks` block) are ignored rather than failing the endpoint. Strict checking is the validator's job (see *API*).
 
 ## Degraded
 
@@ -63,14 +63,21 @@ The same rules run on macOS (`HealthStandard.evaluate`) and in the backend worke
 The first result for an endpoint never notifies for degraded (there is no previous state to
 transition from). The backend's down notification for a first-ever down result is unchanged.
 
-## Components
+## Reported health
 
-Only the **latest** parsed component list is kept per endpoint. It is not stored per result, so
-history doesn't grow.
+Only the **latest** parsed report (status, reason, version) is kept per endpoint. It is not stored
+per result, so history doesn't grow.
 
-- **macOS:** `HealthDetailsStore`, an in-memory `@Published` store that is not persisted and refills on the first check after launch. `EndpointDetailView` shows a *Components* section for health-standard endpoints: the reported status and reason, then each check's key (plus `componentId`), a status icon, `observedValue` + unit, and `output`.
-- **Backend:** the `endpoint_health_state` table (one row per endpoint, overwritten on every readable response) with `status`, `version`, `release_id`, `output`, `components` (jsonb) and `checked_at`.
-- **Limits:** both sides cap the list at 50 entries and clip long text to 300 characters.
+- **macOS:** `HealthDetailsStore`, an in-memory `@Published` store that is not persisted and refills on the first check after launch. `EndpointDetailView` shows a *Reported health* section for health-standard endpoints: the reported status, its reason and when it was read.
+- **Backend:** the `endpoint_health_state` table (one row per endpoint, overwritten on every readable response) with `status`, `version`, `release_id`, `output` and `checked_at`.
+- **Limits:** long text is clipped to 300 characters.
+
+**Per-component `checks` were removed** from the standard because the endpoint is public and a
+component list exposes dependency names, timings and resource usage to anyone. The monitor no longer
+reads, stores or shows them. The `endpoint_health_state.components` column is deprecated: it is no
+longer written or read, and is kept (default `[]`) only so a rollback to the previous release still
+finds it. Drop it in a later migration. For the same reason `health-details` still returns an
+always-empty `components` array, so older clients that read `latest.components` keep working.
 
 ## Automatic version tracking
 
@@ -90,11 +97,11 @@ backend `recordVersionResult`) without an extra request:
 - **Schema** (migration `0002_health_standard.sql`):
   - `endpoints.health_standard boolean not null default false`
   - `health_check_results.health_status text` (nullable)
-  - `endpoint_health_state` (latest components, cascades with the endpoint)
+  - `endpoint_health_state` (latest report, cascades with the endpoint)
 - **Endpoints API:**
   - `POST`/`PUT /api/endpoints` accept `healthStandard`. It is omitted on `PUT` = unchanged.
   - `POST /api/endpoints/import` accepts the macOS export shape (`healthStandard`).
-  - `GET /api/endpoints/:id/health-details` returns `{ healthStandard, latest }`, where `latest` is `{ status, version, releaseId, output, checkedAt, components }` or `null`.
+  - `GET /api/endpoints/:id/health-details` returns `{ healthStandard, latest }`, where `latest` is `{ status, version, releaseId, output, checkedAt, components }` or `null`. `components` is deprecated and always `[]`.
 - **Dashboard** (`GET /api/dashboard`):
   - `latestCheck` gains `healthStatus` and `isDegraded`.
   - `summary` gains `degradedEndpoints` (a subset of `healthyEndpoints`).
@@ -106,23 +113,23 @@ backend `recordVersionResult`) without an extra request:
   - `GET /api/standards/health/schema.json` (public): the JSON Schema (draft 2020-12) alone, as `application/schema+json`.
   - `POST /api/standards/health/validate` (authenticated):
     - **Request:** `{ url }`, which the backend fetches (10 s timeout, 256 KB body cap, http(s) only, redirects followed manually and never to a non-http(s) scheme). Or `{ response: { httpStatus, contentType?, cacheControl?, body } }` to check a pasted response without fetching.
-    - **Response:** `{ standard, valid, errors, warnings, observed }`. MUST violations are `errors`, SHOULD violations and leak heuristics are `warnings`.
+    - **Response:** `{ standard, valid, errors, warnings, observed }`. MUST violations are `errors`, SHOULD violations and leak heuristics are `warnings`. A `checks` block (`no-checks`) and any field outside the standard (`known-fields`) are warnings, so existing services stay valid.
     - **Fetch failures:** an unreachable URL returns `valid: false` with a single `fetch` error, not an HTTP error.
     - **Pasted responses:** content-type and cache-control are only checked when supplied.
     - The validator is a pure function, `health-standard-validator.ts`.
 - **Own `GET /health`:**
-  - Follows the standard: `status`, `version` (from `package.json`), `releaseId` (`RELEASE_ID` env var, else the git SHA of the checkout, else omitted), `serviceId`, and `postgres:responseTime` / `redis:responseTime` checks.
-  - Probes are cached for 10 s and time-limited to 800 ms each. Slower than 250 ms is `warn`.
+  - Follows the standard: `status`, `version` (from `package.json`), `releaseId` (`RELEASE_ID` env var, else the git SHA of the checkout, else omitted), `serviceId`, and a short `output` when not `pass`. It publishes no per-dependency details.
+  - The Postgres and Redis probes still run internally to decide `status`. They are cached for 10 s and time-limited to 800 ms each. Slower than 250 ms is `warn`.
   - Returns 503 when a dependency fails. The error message is never echoed.
 - **Worker:**
   - The standard evaluation happens inside the health check job.
-  - Storing components and the auto-tracked version runs in a separate `try` after the result is recorded, so it can never alter or mask the health result (same pattern as the version check).
+  - Storing the report and the auto-tracked version runs in a separate `try` after the result is recorded, so it can never alter or mask the health result (same pattern as the version check).
 
 ## Mobile / web client
 
 - The add/edit endpoint form (`client/app/endpoint-form.tsx`) has the *Uses Zext Health Standard* toggle; when on, the expected status code is hidden.
 - Degraded is a distinct state (orange, warning-triangle icon) in every status badge, the dashboard summary, and the detail history markers (circle / triangle / square for healthy / degraded / down).
-- The detail screen shows a *Version* section (from `/versions`) and a *Components* section (from `/health-details`).
+- The detail screen shows a *Version* section (from `/versions`) and a *Reported health* section (from `/health-details`).
 - Status logic and form validation are pure functions in `client/src/logic/`, unit-tested and run in CI (`client-ci.yml`).
 
 ## Not in this iteration
