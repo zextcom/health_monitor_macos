@@ -33,6 +33,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: ProjeHealthMonitor/ProjeHealthMonitor.entitlements
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # The stamp script below reads the repo's .git, which the script sandbox would block.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
       configs:
         Debug:
           # App Group entitlements require a development team even for local builds — ad-hoc
@@ -53,6 +55,15 @@ targets:
     dependencies:
       - package: Sparkle
       - package: KeyboardShortcuts
+    postBuildScripts:
+      - name: Stamp git commit
+        basedOnDependencyAnalysis: false
+        script: |
+          # Short hash of the commit being built, shown in Settings > About. Runs before code
+          # signing, so the signature covers the stamped Info.plist. Left empty (and hidden in
+          # the UI) when git isn't available, e.g. a source tarball.
+          HASH=$(git -C "$SRCROOT" rev-parse --short=7 HEAD 2>/dev/null || true)
+          /usr/libexec/PlistBuddy -c "Set :GitCommit $HASH" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
       - target: HealthMonitorWidget
         embed: true
     info:
@@ -62,6 +73,8 @@ targets:
         CFBundleDisplayName: Health Mntr
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Filled in at build time by the "Stamp git commit" script below.
+        GitCommit: ""
         NSHumanReadableCopyright: "© 2026 Zext"
         SUFeedURL: https://github.com/zextcom/health_monitor_macos/releases/latest/download/appcast.xml
         SUScheduledCheckInterval: 86400

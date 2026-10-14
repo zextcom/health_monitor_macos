@@ -34,11 +34,11 @@
 		4CF847FFEDC057597ABB84EE /* BackendAuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92057BDBFB7E138F2851C9D3 /* BackendAuthStore.swift */; };
 		4D08272626D5CFCFAEEC4522 /* HealthCheckServiceCertificateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89F5BDFB7EDF8ED278B11F9 /* HealthCheckServiceCertificateTests.swift */; };
 		4D261E0830703EB31C5DBF6F /* UpdaterViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9833ABF2C0C70DEB4919D2 /* UpdaterViewModelTests.swift */; };
+		510ACECFC41292ED0B1C9C83 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EB00C107F720B70919B1D8 /* BuildInfo.swift */; };
 		524991B365C873D07813BE87 /* ProjeHealthMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE50D1BA539C573773D5D4B /* ProjeHealthMonitorApp.swift */; };
 		7518E34BAF856BECCC6AFA8E /* EndpointFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4226E59C5529BA2094C44102 /* EndpointFormView.swift */; };
 		7793FA7BF426C50F76F1F4A1 /* HealthCheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */; };
 		781DD4DE6EF4C7E0389730A4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 9206A9B4E24ED8C577CD938F /* Sparkle */; };
-		7D0B5CAC10CF708A7667C298 /* HealthMonitorWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0D1BC14F0825A3D74DF9488D /* HealthMonitorWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		849D6E29D201AC90934C1F18 /* HealthDetailsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B511158A3E93BB39654D450 /* HealthDetailsStore.swift */; };
 		8AC1B68D72D3FABBA8DB611D /* BackendModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964B1659E52DBB5530768B6E /* BackendModels.swift */; };
 		9092041455E51E9D4CA2C681 /* HealthStandardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */; };
@@ -54,6 +54,7 @@
 		C000DFC585881158D5AA749C /* PopoverUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59B82EAB47F74D4B9B57B769 /* PopoverUITests.swift */; };
 		C0E8D2EC3356DB7FCBC51B3B /* HealthCheckServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AC18FDA0741BA56A172438 /* HealthCheckServiceTests.swift */; };
 		C2057D68887A567B081E9F44 /* UpdaterViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */; };
+		C7A0B825403CB705065DC1D6 /* BuildInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68BB2CE56B3CA08E7DA9CCE /* BuildInfoTests.swift */; };
 		C97CC7103C719C511962CB5E /* HealthStandardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39F5C0C6304CE58ECF506C1 /* HealthStandardTests.swift */; };
 		CFB40F8394FBA708BA20E201 /* HealthCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9328D303A6ED02FF399BCD68 /* HealthCheckService.swift */; };
 		D445ABEF67522639900B8D7E /* VersionCheckUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85DB44B381AFEAB42278443E /* VersionCheckUITests.swift */; };
@@ -81,28 +82,7 @@
 			remoteGlobalIDString = 7BFF51B90F6CC4E791BCF188;
 			remoteInfo = ProjeHealthMonitor;
 		};
-		A58084238FB4C2A9952657A8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 6748F4B66E5A8ED7FD9FD9BA /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 981C1DE60A1E09F5C7373615;
-			remoteInfo = HealthMonitorWidget;
-		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		33B8FFBA0E42205866DDE479 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				7D0B5CAC10CF708A7667C298 /* HealthMonitorWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		003BD1F50896BDDEE68EEC11 /* HealthStandardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStandardUITests.swift; sourceTree = "<group>"; };
@@ -143,9 +123,11 @@
 		9A218C111116ECF1E18981B4 /* BackendSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendSyncService.swift; sourceTree = "<group>"; };
 		9EF76FB0694D98B44852910D /* UpdaterViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterViewModel.swift; sourceTree = "<group>"; };
 		A2216B2976313E4FDD3AACBF /* VersionCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionCheck.swift; sourceTree = "<group>"; };
+		A68BB2CE56B3CA08E7DA9CCE /* BuildInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoTests.swift; sourceTree = "<group>"; };
 		A7F0751012E31CFF8AB4E08F /* ProjeHealthMonitorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProjeHealthMonitorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8EA025C6FC55AF16321C6EE /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		AA9B2D6E741737515EA6E596 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B1EB00C107F720B70919B1D8 /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
 		B89F5BDFB7EDF8ED278B11F9 /* HealthCheckServiceCertificateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCheckServiceCertificateTests.swift; sourceTree = "<group>"; };
 		B9000BB26EE58E67899B8334 /* NotificationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationServiceTests.swift; sourceTree = "<group>"; };
 		C3FB0D781531F0E4B8B131BC /* ProjeHealthMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjeHealthMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -271,6 +253,7 @@
 		CC7EDA1338D1E5702183538A /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				B1EB00C107F720B70919B1D8 /* BuildInfo.swift */,
 				CDCE13DAFEEABFE4AAA57A58 /* DailyStat.swift */,
 				FEE21C47ACEF036897E38750 /* Endpoint.swift */,
 				6DB4AFE5BD821E107ED9FC13 /* HealthCheckResult.swift */,
@@ -293,6 +276,7 @@
 		E1AA5DB990C54429860F3A47 /* ProjeHealthMonitorTests */ = {
 			isa = PBXGroup;
 			children = (
+				A68BB2CE56B3CA08E7DA9CCE /* BuildInfoTests.swift */,
 				D547E21ABAA7C6C8EC7A0D47 /* CertificateFixtures.swift */,
 				1CAA4132ACFA301973B04DA8 /* DailyStatsStoreTests.swift */,
 				29E2236A1DA1263EDB7D7010 /* DegradedDisplayTests.swift */,
@@ -356,12 +340,11 @@
 				E42901FB4B0DC4BE3830958B /* Sources */,
 				E50B28B01C038E9BA3CD189F /* Resources */,
 				22258DB3FA4E25C9A3055147 /* Frameworks */,
-				33B8FFBA0E42205866DDE479 /* Embed Foundation Extensions */,
+				9113DA6008E7211E8D9F6FA0 /* Stamp git commit */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				D32BED1B5C281309AA651C02 /* PBXTargetDependency */,
 			);
 			name = ProjeHealthMonitor;
 			packageProductDependencies = (
@@ -464,11 +447,34 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		9113DA6008E7211E8D9F6FA0 /* Stamp git commit */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp git commit";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Short hash of the commit being built, shown in Settings > About. Runs before code\n# signing, so the signature covers the stamped Info.plist. Left empty (and hidden in\n# the UI) when git isn't available, e.g. a source tarball.\nHASH=$(git -C \"$SRCROOT\" rev-parse --short=7 HEAD 2>/dev/null || true)\n/usr/libexec/PlistBuddy -c \"Set :GitCommit $HASH\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		0CEB45C4039C46A323C4CE59 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C7A0B825403CB705065DC1D6 /* BuildInfoTests.swift in Sources */,
 				B0C064C9466D381A1EB1298F /* CertificateFixtures.swift in Sources */,
 				292EB5D37A94225B932FD574 /* DailyStatsStoreTests.swift in Sources */,
 				442465F0E8C6E9D9EF4FCF16 /* DegradedDisplayTests.swift in Sources */,
@@ -515,6 +521,7 @@
 				3AA299BE73A8FD578F62D03A /* BackendEndpointRowView.swift in Sources */,
 				8AC1B68D72D3FABBA8DB611D /* BackendModels.swift in Sources */,
 				25DDB78136E8EF790B35D016 /* BackendSyncService.swift in Sources */,
+				510ACECFC41292ED0B1C9C83 /* BuildInfo.swift in Sources */,
 				0757EC8D89DCCF506658824E /* DailyStat.swift in Sources */,
 				3B28423787220A2AA63370FE /* DailyStatsStore.swift in Sources */,
 				A0BC7BFAA69BFA044725CECD /* DailyUptimeBarView.swift in Sources */,
@@ -558,11 +565,6 @@
 			isa = PBXTargetDependency;
 			target = 7BFF51B90F6CC4E791BCF188 /* ProjeHealthMonitor */;
 			targetProxy = 15C2D62758597D1804083DA0 /* PBXContainerItemProxy */;
-		};
-		D32BED1B5C281309AA651C02 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 981C1DE60A1E09F5C7373615 /* HealthMonitorWidget */;
-			targetProxy = A58084238FB4C2A9952657A8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -676,6 +678,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4MSY72K4VX;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProjeHealthMonitor/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -788,6 +791,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4MSY72K4VX;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProjeHealthMonitor/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
