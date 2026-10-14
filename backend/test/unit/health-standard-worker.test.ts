@@ -100,7 +100,7 @@ describe('worker: health-standard endpoints', () => {
     expect(row.healthStatus).toBeNull();
   });
 
-  it('pass: healthy, stores components and auto-tracks the version', async () => {
+  it('pass: healthy, stores the report and auto-tracks the version; a legacy "checks" block is ignored', async () => {
     const user = await createUser();
     const endpoint = await createEndpoint(user.id, { expectedStatusCode: 204 }); // ignored for the standard
 
@@ -108,16 +108,20 @@ describe('worker: health-standard endpoints', () => {
       status: 'pass',
       version: '1.4.2',
       releaseId: '9f2c1ab7e4d3',
-      checks: { 'postgres:responseTime': [{ status: 'pass', observedValue: 12, observedUnit: 'ms' }] },
+      checks: { 'postgres:responseTime': [{ status: 'fail', observedValue: 12, observedUnit: 'ms' }] },
     });
 
     expect(result).toMatchObject({ isHealthy: true, healthStatus: 'pass', statusCode: 200, failureReason: null });
-    expect(await getHealthDetails(endpoint.id)).toMatchObject({
+    expect(await getHealthDetails(endpoint.id)).toEqual({
       status: 'pass',
       version: '1.4.2',
       releaseId: '9f2c1ab7e4d3',
-      components: [{ key: 'postgres:responseTime', status: 'pass', observedValue: 12, observedUnit: 'ms' }],
+      output: null,
+      checkedAt: expect.any(String),
+      components: [],
     });
+    const [stored] = await db.select().from(endpointHealthState).where(eq(endpointHealthState.endpointId, endpoint.id));
+    expect(stored.components).toEqual([]); // nothing from the response is persisted per component
     const versions = await getVersionHistory(endpoint.id);
     expect(versions.current).toMatchObject({ version: '1.4.2 (9f2c1ab)', isFailing: false });
     expect(pushes).toEqual([]);
@@ -136,21 +140,17 @@ describe('worker: health-standard endpoints', () => {
     expect(pushes).toEqual([]); // the very first result never sends a degraded notification
   });
 
-  it('fail (503): down with an incident and a reason from the first failing check', async () => {
+  it('fail (503): down with an incident and the reason from output', async () => {
     const user = await createUser();
     const endpoint = await createEndpoint(user.id);
 
-    const result = await check(
-      endpoint.id,
-      { status: 'fail', checks: { 'postgres:responseTime': [{ status: 'fail', output: 'unreachable' }] } },
-      503,
-    );
+    const result = await check(endpoint.id, { status: 'fail', output: 'Database unreachable' }, 503);
 
     expect(result).toMatchObject({
       isHealthy: false,
       healthStatus: 'fail',
       statusCode: 503,
-      failureReason: 'postgres:responseTime: fail — unreachable',
+      failureReason: 'Database unreachable',
     });
     expect(await db.select().from(incidents).where(eq(incidents.endpointId, endpoint.id))).toHaveLength(1);
     expect(pushes.map((push) => push.title)).toEqual(['🔴 Endpoint Down']);
@@ -222,17 +222,16 @@ describe('worker: health-standard endpoints', () => {
     expect(pushes.map((push) => push.title)).toEqual(['🟢 Endpoint Healthy']);
   });
 
-  it('keeps only the latest component list per endpoint', async () => {
+  it('keeps only the latest report per endpoint', async () => {
     const user = await createUser();
     const endpoint = await createEndpoint(user.id);
 
-    await check(endpoint.id, { status: 'pass', checks: { 'a:x': [{ status: 'pass' }], 'b:x': [{ status: 'pass' }] } });
-    await check(endpoint.id, { status: 'warn', checks: { 'c:x': [{ status: 'warn' }] } });
+    await check(endpoint.id, { status: 'pass', version: '1.0.0' });
+    await check(endpoint.id, { status: 'warn', version: '1.0.1', output: 'Cache unavailable' });
 
     const rows = await db.select().from(endpointHealthState).where(eq(endpointHealthState.endpointId, endpoint.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0].status).toBe('warn');
-    expect(rows[0].components).toEqual([{ key: 'c:x', status: 'warn' }]);
+    expect(rows[0]).toMatchObject({ status: 'warn', version: '1.0.1', output: 'Cache unavailable', components: [] });
   });
 
   it('auto version: records changes and notifies, skips responses without a version', async () => {
@@ -284,12 +283,7 @@ describe('worker: health-standard endpoints', () => {
     const endpoint = await createEndpoint(user.id);
     await createEndpoint(user.id, { name: 'Plain', healthStandard: false });
 
-    await check(endpoint.id, {
-      status: 'warn',
-      version: '2.0.0',
-      output: 'Slow',
-      checks: { 'disk:utilization': [{ status: 'warn', observedValue: 90, observedUnit: 'percent' }] },
-    });
+    await check(endpoint.id, { status: 'warn', version: '2.0.0', output: 'Slow' });
 
     const dashboard = await getDashboard(user.id);
     expect(dashboard.summary).toMatchObject({ healthyEndpoints: 1, degradedEndpoints: 1, unhealthyEndpoints: 0 });
@@ -300,7 +294,7 @@ describe('worker: health-standard endpoints', () => {
       status: 'warn',
       version: '2.0.0',
       output: 'Slow',
-      components: [{ key: 'disk:utilization', status: 'warn', observedValue: 90, observedUnit: 'percent' }],
+      components: [],
     });
     expect(standard.version).toMatchObject({ isEnabled: true, current: '2.0.0', source: 'healthStandard' });
 

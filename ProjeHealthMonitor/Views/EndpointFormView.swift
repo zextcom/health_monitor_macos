@@ -105,7 +105,7 @@ struct EndpointFormView: View {
                     if checkType == .http {
                         Toggle("Uses Zext Health Standard", isOn: $healthStandard)
                             .accessibilityIdentifier("HealthStandardToggle")
-                        Text("Reads pass / warn / fail from the JSON status (HTTP 200 or 503) instead of a status code; warn shows as degraded, and version and components come from the same response.")
+                        Text("Reads pass / warn / fail from the JSON status (HTTP 200 or 503) instead of a status code; warn shows as degraded, and the version comes from the same response.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if !healthStandard {

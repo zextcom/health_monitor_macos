@@ -143,7 +143,7 @@ struct Endpoint: Codable, Identifiable, Equatable {
 
     /// The endpoint implements the Zext Health Standard (`zext-health/v1`): its JSON `status`
     /// (pass/warn/fail) decides health instead of `expectedStatusCode`, warn shows as degraded, and
-    /// version/components are read from the same response. HTTP only. See `HealthStandard`.
+    /// version is read from the same response. HTTP only. See `HealthStandard`.
     var healthStandard: Bool = false
 
     init(id: UUID = UUID(), name: String, url: URL, checkType: CheckType = .http, expectedStatusCode: Int = 200,

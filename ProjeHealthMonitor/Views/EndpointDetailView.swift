@@ -25,7 +25,7 @@ struct EndpointDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     responseTimeSection
                     if endpoint.healthStandard {
-                        componentsSection
+                        reportedHealthSection
                     }
                     incidentSection
                     if endpoint.versionCheck != nil || versionState != nil {
@@ -106,14 +106,14 @@ struct EndpointDetailView: View {
         return "Response time over \(values.count) checks: minimum \(minValue) ms, average \(average) ms, maximum \(maxValue) ms\(degradedPart)"
     }
 
-    // MARK: - Components (health standard)
+    // MARK: - Reported health (health standard)
 
     private var healthDetails: HealthDetailsStore.Entry? { healthDetailsStore.details(for: endpoint.id) }
 
     @ViewBuilder
-    private var componentsSection: some View {
+    private var reportedHealthSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Components").font(.headline)
+            Text("Reported health").font(.headline)
             if let healthDetails {
                 let response = healthDetails.response
                 HStack(spacing: 6) {
@@ -131,44 +131,10 @@ struct EndpointDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
-                if response.components.isEmpty {
-                    Text("The service reports no component checks").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(response.components) { component in
-                            componentRow(component)
-                        }
-                    }
-                }
             } else {
                 Text("No health-standard response read yet").font(.caption).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func componentRow(_ component: HealthComponentCheck) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: component.status.symbolName)
-                .foregroundStyle(component.status.color)
-                .font(.caption)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(component.componentId.map { "\(component.key) (\($0))" } ?? component.key)
-                    .font(.system(.caption, design: .monospaced))
-                if let output = component.output {
-                    Text(output).font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if let observed = component.observedText {
-                Text(observed)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel([component.key, component.status.rawValue, component.observedText, component.output]
-            .compactMap { $0 }.joined(separator: ", "))
     }
 
     // MARK: - Incidents

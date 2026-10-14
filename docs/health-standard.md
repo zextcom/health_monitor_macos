@@ -3,8 +3,8 @@
 **ID:** `zext-health/v1` · **Media type:** `application/health+json`
 
 This standard defines a single health endpoint that every Zext service implements, so one monitor
-(Health Monitor) can tell, for any service, whether it is up, degraded, or down, which version is
-deployed, and which dependency is the problem. It follows the IETF draft
+(Health Monitor) can tell, for any service, whether it is up, degraded, or down, and which version is
+deployed. It follows the IETF draft
 [Health Check Response Format for HTTP APIs](https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check)
 (draft-inadarei-api-health-check). Any tool that understands that draft understands this standard.
 
@@ -14,6 +14,15 @@ The same rules, examples and a JSON Schema are published (no account needed) at:
 
 - `GET https://health.zext.dev/api/standards/health`: rules, examples and schema as JSON
 - `GET https://health.zext.dev/api/standards/health/schema.json`: the JSON Schema (draft 2020-12) alone
+
+## Principle: the endpoint is public, so publish the minimum
+
+`/health` needs no authentication, so anyone on the internet can read it. Treat every field as a
+public page and publish **only what the monitor needs to decide**: the overall status and the running
+version. The service decides its own status internally (it checks its database, cache and so on, and
+reports a single `pass`, `warn` or `fail`). It does **not** publish per-component details such as
+dependency names, response times, disk usage or the versions of its runtime. That detail belongs in
+your own logs and dashboards, not in a public response.
 
 ## TL;DR
 
@@ -34,8 +43,8 @@ Cache-Control: no-store
 ```
 
 - `status` is `pass`, `warn` or `fail`. HTTP status is **200** for `pass` and `warn`, and **503** for `fail`.
-- Report the running `version` and `releaseId` (git SHA or build number).
-- Optionally list dependency checks under `checks`.
+- Report the running `version` and `releaseId` (git SHA or build number) of **your application**.
+- Nothing else is needed. No `checks`, no runtime or library versions, no counts, no hostnames.
 - No auth. Respond in under 1 second. No secrets, paths, internal hosts or stack traces.
 
 ## 1. Endpoint
@@ -45,7 +54,7 @@ Cache-Control: no-store
 | Serve the endpoint at `GET /health`. | SHOULD |
 | The endpoint does not require authentication: no API key, cookie or IP allow-list that the monitor can't satisfy. | MUST |
 | Respond within **1 second**. | SHOULD |
-| Cache dependency checks for **at most 30 seconds**, and give each one its own timeout so that one slow dependency can't stall the whole response. | SHOULD |
+| Cache your internal dependency probes for **at most 30 seconds**, and give each one its own timeout so that one slow dependency can't stall the whole response. | SHOULD |
 | Answer `HEAD /health` if your framework makes that free. Monitors use `GET`. | MAY |
 
 `/health` describes the service as a whole. Use `/live` or `/ready` for Kubernetes-style
@@ -72,45 +81,48 @@ is an error. Any other HTTP status (401, 404, 500, …) means the health endpoin
 ## 4. Body
 
 The body MUST be a single JSON object. Unknown extra fields are allowed and MUST be ignored by
-consumers, so you can add more later without breaking anything.
+consumers, but because the endpoint is public the validator warns about them (see 4.3).
 
-### 4.1 Top-level fields
+### 4.1 Fields
 
 | Field | Type | Level | Description |
 |---|---|---|---|
 | `status` | `"pass"` \| `"warn"` \| `"fail"` | **MUST** | Overall health. Lowercase, exactly one of these three values. |
-| `version` | string | SHOULD | Human-readable version of the running code, e.g. `"1.4.2"`. |
+| `version` | string | SHOULD | Human-readable version of **your application**, e.g. `"1.4.2"`. Not the version of PHP, Node, the framework or any library. |
 | `releaseId` | string | SHOULD | Identifier of this specific deploy, e.g. the git SHA or CI build number. |
 | `serviceId` | string | MAY | Stable identifier of the service, e.g. `"billing-api"`. |
 | `description` | string | MAY | Human-readable name of the service. |
 | `notes` | array of strings | MAY | Free-form notes. |
-| `output` | string | MAY (SHOULD when `warn`/`fail`) | One short, human-readable reason, e.g. `"Database unreachable"`. **Never** a stack trace or raw error dump. |
-| `checks` | object | MAY | Dependency and component checks, see 4.2. |
+| `output` | string | MAY (SHOULD when `warn`/`fail`) | One short, fixed, human-readable reason, e.g. `"Database unreachable"`. **Never** a stack trace or raw error dump. |
 
-### 4.2 `checks`
+`version` and `releaseId` MUST come from the build or deploy. Don't send placeholders such as
+`"unknown"` or `"..."`: leave the field out instead.
 
-`checks` is an object. Each **key** names one measurement as `"component:measurement"`, for example
-`"postgres:responseTime"`, `"redis:responseTime"`, `"disk:utilization"`, `"queue:backlog"`. Each
-**value** is an **array** of check objects. It is usually a single entry. Use several entries when
-the component has several instances (e.g. two replicas, told apart by `componentId`).
+### 4.2 Overall status
 
-| Field | Type | Level | Description |
-|---|---|---|---|
-| `status` | `"pass"` \| `"warn"` \| `"fail"` | **MUST** | Status of this check. |
-| `componentId` | string | MAY | Identifier of the instance, e.g. `"primary"`. Not a hostname or IP. |
-| `componentType` | string | MAY | e.g. `"datastore"`, `"system"`, `"component"`. |
-| `observedValue` | number \| string \| boolean | MAY | The measured value, e.g. `12`. |
-| `observedUnit` | string | MAY | Unit of `observedValue`, e.g. `"ms"`, `"percent"`. |
-| `time` | string | MAY | When this was measured (ISO 8601 with time zone, e.g. `"2026-10-11T09:30:00Z"`). Useful when cached. |
-| `output` | string | MAY | Short reason when this check is `warn`/`fail`. |
+The service decides `status` itself, from whatever it needs to be healthy:
 
-### 4.3 Overall status
+- A dependency the service cannot work without (database, primary cache) is down: `fail`.
+- An optional dependency is down (the service still works, maybe with reduced features), or a
+  dependency is slow or a resource is running low: `warn`.
+- Otherwise: `pass`.
 
-The overall `status` MUST be the **worst** status of all check entries, where `fail` is worse than
-`warn`, which is worse than `pass`. A service with no `checks` simply reports its own state.
+When the status is `warn` or `fail`, put one short, **fixed** message in `output` (for example
+`"Database unreachable"`, never the exception text). That single line is how the monitor and your
+team learn which part is unhealthy. Anything more detailed goes to your logs.
 
-If a dependency is optional (the service still works without it, maybe with reduced features),
-report that dependency as `warn` instead of `fail`.
+### 4.3 What not to publish
+
+The monitor only needs the fields in 4.1. Everything else is public information with no benefit.
+In particular:
+
+- **`checks`, or any per-component list.** Earlier drafts of this standard had an optional `checks`
+  object. It was removed: it exposed dependency names, response times and resource usage to anyone.
+  Services that still send it keep working (the monitor ignores it), and the validator warns.
+- **Technology stack details:** runtime, framework, OS or library versions (`"php": "8.3.23"`), which
+  help an attacker pick known exploits.
+- Record or user counts, configuration values, queue sizes, and infrastructure topology (replica
+  counts, regions, host names).
 
 ## 5. Examples
 
@@ -128,36 +140,7 @@ Cache-Control: no-store
   "version": "1.4.2",
   "releaseId": "9f2c1ab7e4d3",
   "serviceId": "billing-api",
-  "description": "Billing API",
-  "checks": {
-    "postgres:responseTime": [
-      {
-        "componentType": "datastore",
-        "status": "pass",
-        "observedValue": 12,
-        "observedUnit": "ms",
-        "time": "2026-10-11T09:30:00Z"
-      }
-    ],
-    "redis:responseTime": [
-      {
-        "componentType": "datastore",
-        "status": "pass",
-        "observedValue": 2,
-        "observedUnit": "ms",
-        "time": "2026-10-11T09:30:00Z"
-      }
-    ],
-    "disk:utilization": [
-      {
-        "componentType": "system",
-        "status": "pass",
-        "observedValue": 41.5,
-        "observedUnit": "percent",
-        "time": "2026-10-11T09:30:00Z"
-      }
-    ]
-  }
+  "description": "Billing API"
 }
 ```
 
@@ -175,28 +158,7 @@ Cache-Control: no-store
   "version": "1.4.2",
   "releaseId": "9f2c1ab7e4d3",
   "serviceId": "billing-api",
-  "output": "Disk usage above 85%",
-  "checks": {
-    "postgres:responseTime": [
-      {
-        "componentType": "datastore",
-        "status": "pass",
-        "observedValue": 14,
-        "observedUnit": "ms",
-        "time": "2026-10-11T09:30:00Z"
-      }
-    ],
-    "disk:utilization": [
-      {
-        "componentType": "system",
-        "status": "warn",
-        "observedValue": 87.2,
-        "observedUnit": "percent",
-        "time": "2026-10-11T09:30:00Z",
-        "output": "Disk usage above 85%"
-      }
-    ]
-  }
+  "output": "Cache unavailable"
 }
 ```
 
@@ -214,26 +176,7 @@ Cache-Control: no-store
   "version": "1.4.2",
   "releaseId": "9f2c1ab7e4d3",
   "serviceId": "billing-api",
-  "output": "Database unreachable",
-  "checks": {
-    "postgres:responseTime": [
-      {
-        "componentType": "datastore",
-        "status": "fail",
-        "time": "2026-10-11T09:30:00Z",
-        "output": "Database unreachable"
-      }
-    ],
-    "redis:responseTime": [
-      {
-        "componentType": "datastore",
-        "status": "pass",
-        "observedValue": 3,
-        "observedUnit": "ms",
-        "time": "2026-10-11T09:30:00Z"
-      }
-    ]
-  }
+  "output": "Database unreachable"
 }
 ```
 
@@ -255,6 +198,11 @@ HTTP/1.1 200 OK                                   <- says OK while reporting an 
 Content-Type: text/html                           <- not JSON content type
 {
   "status": "ok",                                 <- not pass/warn/fail
+  "version": "unknown",                           <- placeholder: leave it out instead
+  "releaseId": "...",                             <- placeholder: leave it out instead
+  "checks": {                                     <- per-component detail is public
+    "php:version": [{ "status": "pass", "observedValue": "8.3.23" }]   <- runtime version
+  },
   "error": "Error: connect ECONNREFUSED 10.0.3.7:5432\n    at TCPConnectWrap...",  <- stack trace + internal IP
   "storage": "/var/www/vhosts/example/storage",   <- server file path
   "db": "postgres://app:s3cret@db.internal/app"   <- connection string with password
@@ -272,6 +220,8 @@ The health endpoint is public and unauthenticated, so treat its body like a publ
 - connection strings (`postgres://user:pass@host/db`)
 - stack traces or raw exception messages (log them, and put one short line in `output` instead)
 - user data of any kind
+- details of the technology stack and infrastructure: runtime, framework, OS or library versions,
+  record counts, configuration values, topology (see 4.3)
 
 Catch dependency errors and replace them with a fixed message such as `"Database unreachable"`.
 Exception messages often contain hostnames, IPs or credentials. The validator scans for these
@@ -282,13 +232,12 @@ MUST.
 
 - The whole response SHOULD take **under 1 second**. Monitors hit it every minute or so, sometimes
   several monitors at once.
-- Run dependency checks **in parallel**, each with its own timeout (e.g. 500–800 ms). A check that
-  times out is `fail` (or `warn` if the dependency is optional).
-- **Cache** the result of the dependency checks for at most **30 seconds** and serve the cached
-  result in between. Put the measurement time in each check's `time`.
+- Run your internal dependency probes **in parallel**, each with its own timeout (e.g. 500–800 ms). A
+  probe that times out makes the service `fail` (or `warn` if the dependency is optional).
+- **Cache** the probe results for at most **30 seconds** and serve the cached result in between.
 - Use cheap probes: `SELECT 1`, Redis `PING`, a `HEAD` on a dependency's own `/health`. Never run a
   real query, a migration check or anything that writes.
-- Keep the body small (a few KB). The validator rejects bodies over 256 KB.
+- Keep the body small (it is a handful of fields). The validator rejects bodies over 256 KB.
 
 ## 8. How to implement
 
@@ -302,22 +251,18 @@ function probe(name, fn, timeout = 800ms, warnAfter = 250ms):
     started = now()
     try:
         run fn() with timeout
-        elapsed = now() - started
-        status = elapsed > warnAfter ? "warn" : "pass"
-        return name + ":responseTime", { componentType: "datastore", status,
-                                         observedValue: elapsed, observedUnit: "ms", time: iso(now()) }
+        return (now() - started) > warnAfter ? ("warn", name + " is slow") : ("pass", null)
     catch (any error):
         log(error)                                   # full details go to logs only
-        return name + ":responseTime", { componentType: "datastore", status: "fail",
-                                         time: iso(now()), output: name + " unreachable" }
+        return ("fail", name + " unreachable")
 
 function computeHealth():
-    checks = run in parallel:
-        probe("postgres", () => db.query("SELECT 1"))
-        probe("redis",    () => redis.ping())
-    status = worst(all check statuses)               # fail > warn > pass
-    body = { status, version: APP_VERSION, releaseId: GIT_SHA, serviceId: "billing-api", checks }
-    if status != "pass": body.output = output of the first non-pass check
+    results = run in parallel:
+        probe("database", () => db.query("SELECT 1"))
+        probe("cache",    () => redis.ping())
+    status = worst(all statuses)                     # fail > warn > pass
+    body = { status, version: APP_VERSION, releaseId: GIT_SHA, serviceId: "billing-api" }
+    if status != "pass": body.output = message of the first non-pass probe
     return body
 
 handle GET /health:
@@ -361,7 +306,8 @@ curl -s https://health.zext.dev/api/standards/health/validate \
 The result lists MUST violations under `errors` (any error makes `valid` false) and SHOULD
 violations under `warnings`. Each issue has a `path` (a JSON Pointer into the body, or `http.status`
 / `http.headers.content-type` / `http.headers.cache-control` / `http.responseTime`), a `rule` id and
-a `message`. Aim for `"valid": true` with no warnings.
+a `message`. Aim for `"valid": true` with no warnings. A `checks` field, or any field this standard
+doesn't define, produces a warning (`no-checks`, `known-fields`).
 
 You can also validate the body offline against the JSON Schema with any draft 2020-12 validator.
 The schema covers the body only, not the HTTP status/header rules.
@@ -370,11 +316,11 @@ The schema covers the body only, not the HTTP status/header rules.
 
 - [ ] `GET /health` responds without authentication
 - [ ] `status` is `pass` / `warn` / `fail`, and HTTP is 200 / 200 / 503
-- [ ] `version` and `releaseId` are set from the build or deploy
-- [ ] Dependencies are listed under `checks` as `"component:measurement"` arrays
-- [ ] Overall `status` is the worst check status
-- [ ] `output` gives a short reason for `warn`/`fail`
+- [ ] `version` and `releaseId` are set from the build or deploy (no placeholders)
+- [ ] `version` is your application's version, not a runtime, framework or library version
+- [ ] The body has no `checks` and no other fields beyond the ones in 4.1
+- [ ] `output` gives a short, fixed reason for `warn`/`fail`
 - [ ] `Content-Type: application/health+json`, `Cache-Control: no-store`
-- [ ] Under 1 s, with dependency checks cached ≤ 30 s and individually time-limited
-- [ ] No secrets, paths, internal hosts/IPs, connection strings, stack traces or user data
+- [ ] Under 1 s, with internal probes cached ≤ 30 s and individually time-limited
+- [ ] No secrets, paths, internal hosts/IPs, connection strings, stack traces, user data or stack/infrastructure details
 - [ ] The validate endpoint returns `"valid": true` with no warnings

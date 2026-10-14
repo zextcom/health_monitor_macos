@@ -1,7 +1,7 @@
 import Foundation
 
-/// `status` of a Zext Health Standard (`zext-health/v1`) response or of one of its checks. See
-/// docs/health-standard.md; the backend mirrors these rules in `health-standard.ts`.
+/// `status` of a Zext Health Standard (`zext-health/v1`) response. See docs/health-standard.md; the
+/// backend mirrors these rules in `health-standard.ts`.
 enum HealthStandardStatus: String, Codable, CaseIterable, Comparable {
     case pass, warn, fail
 
@@ -23,45 +23,21 @@ enum HealthStandardStatus: String, Codable, CaseIterable, Comparable {
     }
 }
 
-/// One flattened entry of a health-standard `checks` map, e.g. key `"postgres:responseTime"`.
-struct HealthComponentCheck: Equatable, Identifiable {
-    /// `key` plus the entry's index — a key may hold several entries (one per instance).
-    let id: String
-    let key: String
-    let status: HealthStandardStatus
-    let componentId: String?
-    let componentType: String?
-    /// Stringified for display (numbers via `NSNumber`, booleans as "true"/"false").
-    let observedValue: String?
-    let observedUnit: String?
-    let time: String?
-    let output: String?
-
-    /// "12 ms", "87.2 percent", or just the value when there's no unit.
-    var observedText: String? {
-        guard let observedValue else { return nil }
-        guard let observedUnit else { return observedValue }
-        return "\(observedValue) \(observedUnit)"
-    }
-}
-
-/// Lenient parse of a health-standard body: only `status` is required; malformed check entries are
-/// skipped so a service is still monitored by its declared overall status (strict validation lives
-/// in the backend's validate endpoint).
+/// Lenient parse of a health-standard body: only `status` is required. Unknown fields (including a
+/// legacy `checks` block, which the standard no longer defines) are ignored, so a service is monitored
+/// by its declared overall status (strict validation lives in the backend's validate endpoint).
 struct HealthStandardResponse: Equatable {
     let status: HealthStandardStatus
     let version: String?
     let releaseId: String?
     let output: String?
-    let components: [HealthComponentCheck]
 }
 
 enum HealthStandard {
     static let id = "zext-health/v1"
     static let mediaType = "application/health+json"
 
-    /// Components beyond this are dropped; long text is clipped — keeps the in-memory store small.
-    static let maxComponents = 50
+    /// Long text is clipped — keeps the in-memory store small.
     static let maxTextLength = 300
 
     // MARK: Parsing
@@ -73,41 +49,15 @@ enum HealthStandard {
             return .failure(.invalidStatus(describe(rawStatus)))
         }
 
-        var components: [HealthComponentCheck] = []
-        if let checks = object["checks"] as? [String: Any] {
-            for key in checks.keys.sorted() {
-                guard let entries = checks[key] as? [Any] else { continue }
-                for (index, entry) in entries.enumerated() {
-                    guard components.count < maxComponents,
-                          let entry = entry as? [String: Any],
-                          let entryStatusString = entry["status"] as? String,
-                          let entryStatus = HealthStandardStatus(rawValue: entryStatusString) else { continue }
-                    components.append(HealthComponentCheck(
-                        id: "\(key)#\(index)", key: clip(key), status: entryStatus,
-                        componentId: text(entry["componentId"]), componentType: text(entry["componentType"]),
-                        observedValue: observedValue(entry["observedValue"]), observedUnit: text(entry["observedUnit"]),
-                        time: text(entry["time"]), output: text(entry["output"])))
-                }
-            }
-        }
-
         return .success(HealthStandardResponse(status: status, version: text(object["version"]),
-                                               releaseId: text(object["releaseId"]), output: text(object["output"]),
-                                               components: components))
+                                               releaseId: text(object["releaseId"]), output: text(object["output"])))
     }
 
-    /// Reason for a warn/fail response: top-level `output`, else the first non-pass component as
-    /// `"<key>: <status>[ — output]"`, else a generic `Health status "<status>"`. `nil` for pass.
+    /// Reason for a warn/fail response: top-level `output`, else a generic `Health status "<status>"`.
+    /// `nil` for pass.
     static func reason(for response: HealthStandardResponse) -> String? {
         guard response.status != .pass else { return nil }
-        if let output = response.output { return output }
-        if let problem = response.components.first(where: { $0.status != .pass }) {
-            if let output = problem.output {
-                return "\(problem.key): \(problem.status.rawValue) — \(output)"
-            }
-            return "\(problem.key): \(problem.status.rawValue)"
-        }
-        return "Health status \"\(response.status.rawValue)\""
+        return response.output ?? "Health status \"\(response.status.rawValue)\""
     }
 
     /// Value fed into version tracking when there's no explicit version check:
@@ -129,7 +79,7 @@ enum HealthStandard {
         let isDegraded: Bool
         /// Down reason, or the warn reason for a degraded result.
         let failureReason: String?
-        /// The parsed body when it could be read (components, version).
+        /// The parsed body when it could be read (status, version).
         let response: HealthStandardResponse?
     }
 
@@ -182,7 +132,7 @@ enum HealthStandard {
     }
 
     /// One-line summary of a "Test Connection" response evaluated as a health-standard endpoint, e.g.
-    /// "Status warn · version 1.4.2 (9f2c1ab) · 2 component checks · Disk usage above 85%".
+    /// "Status warn · version 1.4.2 (9f2c1ab) · Cache unavailable".
     static func testSummary(_ evaluation: Evaluation) -> String {
         guard let response = evaluation.response else {
             return evaluation.failureReason ?? "Invalid health response"
@@ -190,9 +140,6 @@ enum HealthStandard {
         var parts = ["Status \(response.status.rawValue)"]
         if let version = trackedVersion(version: response.version, releaseId: response.releaseId) {
             parts.append("version \(version)")
-        }
-        if !response.components.isEmpty {
-            parts.append("\(response.components.count) component check\(response.components.count == 1 ? "" : "s")")
         }
         if let reason = evaluation.failureReason {
             parts.append(reason)
@@ -215,15 +162,6 @@ enum HealthStandard {
             return nil
         }
         return clip(string)
-    }
-
-    private static func observedValue(_ value: Any?) -> String? {
-        if let number = value as? NSNumber {
-            if CFGetTypeID(number) == CFBooleanGetTypeID() { return number.boolValue ? "true" : "false" }
-            return number.stringValue
-        }
-        if let string = value as? String { return clip(string) }
-        return nil
     }
 
     private static func describe(_ value: Any) -> String {

@@ -75,48 +75,34 @@ final class HealthStandardParsingTests: XCTestCase {
         XCTAssertEqual(errorOf(HealthStandard.parse(json: json(#"{"status":"PASS"}"#))), .invalidStatus("\"PASS\""))
     }
 
-    func testParseFlattensChecksLeniently() throws {
-        let body = #"""
-        {"status":"warn","version":" 1.0 ","releaseId":12345,
-         "checks":{
-           "postgres:responseTime":[{"status":"pass","observedValue":12,"observedUnit":"ms","componentType":"datastore"},
-                                    {"status":"bogus"}, "x"],
-           "disk:utilization":[{"status":"warn","observedValue":87.5,"observedUnit":"percent","output":"Above 85%"}],
-           "flag:enabled":[{"status":"pass","observedValue":true,"componentId":"primary"}],
-           "broken":"not-an-array"}}
-        """#
+    func testParseReadsStandardFieldsLeniently() throws {
+        let body = #"{"status":"warn","version":" 1.0 ","releaseId":12345,"output":" Cache unavailable "}"#
         let response = try HealthStandard.parse(json: json(body)).get()
-        XCTAssertEqual(response.status, .warn)
-        XCTAssertEqual(response.version, "1.0")
-        XCTAssertEqual(response.releaseId, "12345")
-        XCTAssertEqual(response.components.map(\.key), ["disk:utilization", "flag:enabled", "postgres:responseTime"])
-        XCTAssertEqual(response.components[0].observedText, "87.5 percent")
-        XCTAssertEqual(response.components[0].output, "Above 85%")
-        XCTAssertEqual(response.components[1].observedText, "true")
-        XCTAssertEqual(response.components[1].componentId, "primary")
-        XCTAssertEqual(response.components[2].observedText, "12 ms")
-        XCTAssertEqual(Set(response.components.map(\.id)).count, 3)
+        XCTAssertEqual(response, HealthStandardResponse(status: .warn, version: "1.0", releaseId: "12345",
+                                                         output: "Cache unavailable"))
     }
 
-    func testParseCapsComponents() throws {
-        let entries = Array(repeating: #"{"status":"pass"}"#, count: 80).joined(separator: ",")
-        let response = try HealthStandard.parse(json: json(#"{"status":"pass","checks":{"a:b":[\#(entries)]}}"#)).get()
-        XCTAssertEqual(response.components.count, HealthStandard.maxComponents)
+    func testParseIgnoresLegacyChecksAndExtraFields() throws {
+        let body = #"""
+        {"status":"pass","php":"8.3.23",
+         "checks":{"postgres:responseTime":[{"status":"fail","observedValue":12}], "broken":"not-an-array"}}
+        """#
+        let response = try HealthStandard.parse(json: json(body)).get()
+        XCTAssertEqual(response, HealthStandardResponse(status: .pass, version: nil, releaseId: nil, output: nil))
+    }
+
+    func testParseClipsLongOutput() throws {
+        let long = String(repeating: "x", count: 1000)
+        let response = try HealthStandard.parse(json: json(#"{"status":"fail","output":"\#(long)"}"#)).get()
+        XCTAssertEqual(response.output?.count, HealthStandard.maxTextLength)
     }
 
     func testReason() {
-        func response(_ status: HealthStandardStatus, output: String? = nil, components: [HealthComponentCheck] = []) -> HealthStandardResponse {
-            HealthStandardResponse(status: status, version: nil, releaseId: nil, output: output, components: components)
-        }
-        func component(_ key: String, _ status: HealthStandardStatus, output: String? = nil) -> HealthComponentCheck {
-            HealthComponentCheck(id: key, key: key, status: status, componentId: nil, componentType: nil, observedValue: nil,
-                                 observedUnit: nil, time: nil, output: output)
+        func response(_ status: HealthStandardStatus, output: String? = nil) -> HealthStandardResponse {
+            HealthStandardResponse(status: status, version: nil, releaseId: nil, output: output)
         }
         XCTAssertNil(HealthStandard.reason(for: response(.pass, output: "ignored")))
-        XCTAssertEqual(HealthStandard.reason(for: response(.fail, output: "DB down", components: [component("db:x", .fail)])), "DB down")
-        XCTAssertEqual(HealthStandard.reason(for: response(.warn, components: [component("db:x", .pass), component("disk:u", .warn, output: "90%")])),
-                       "disk:u: warn — 90%")
-        XCTAssertEqual(HealthStandard.reason(for: response(.fail, components: [component("db:x", .fail)])), "db:x: fail")
+        XCTAssertEqual(HealthStandard.reason(for: response(.fail, output: "DB down")), "DB down")
         XCTAssertEqual(HealthStandard.reason(for: response(.warn)), "Health status \"warn\"")
     }
 
@@ -142,9 +128,9 @@ final class HealthStandardParsingTests: XCTestCase {
 
     func testSummary() {
         let warn = HealthStandard.evaluate(statusCode: 200, data: Data(#"""
-            {"status":"warn","version":"1.4.2","releaseId":"9f2c1ab7e4d3","output":"Disk","checks":{"disk:u":[{"status":"warn"}],"db:x":[{"status":"pass"}]}}
+            {"status":"warn","version":"1.4.2","releaseId":"9f2c1ab7e4d3","output":"Cache unavailable"}
             """#.utf8))
-        XCTAssertEqual(HealthStandard.testSummary(warn), "Status warn · version 1.4.2 (9f2c1ab) · 2 component checks · Disk")
+        XCTAssertEqual(HealthStandard.testSummary(warn), "Status warn · version 1.4.2 (9f2c1ab) · Cache unavailable")
         let pass = HealthStandard.evaluate(statusCode: 200, data: Data(#"{"status":"pass"}"#.utf8))
         XCTAssertEqual(HealthStandard.testSummary(pass), "Status pass")
         let invalid = HealthStandard.evaluate(statusCode: 200, data: Data(#"{"status":"ok"}"#.utf8))
@@ -209,20 +195,19 @@ final class HealthStandardEvaluationTests: XCTestCase {
         }
     }
 
-    func testReasonComesFromOutputOrFirstFailingCheck() {
+    func testReasonComesFromOutput() {
         XCTAssertEqual(evaluate(503, #"{"status":"fail","output":"DB unreachable"}"#).failureReason, "DB unreachable")
-        XCTAssertEqual(evaluate(200, #"{"status":"warn","checks":{"disk:utilization":[{"status":"warn","output":"90%"}]}}"#).failureReason,
-                       "disk:utilization: warn — 90%")
+        XCTAssertEqual(evaluate(200, #"{"status":"warn","output":"Cache unavailable"}"#).failureReason, "Cache unavailable")
     }
 
-    func testFailKeepsParsedResponseForComponents() {
-        let result = evaluate(503, #"{"status":"fail","version":"1","checks":{"db:x":[{"status":"fail"}]}}"#)
+    func testFailKeepsParsedResponse() {
+        let result = evaluate(503, #"{"status":"fail","version":"1"}"#)
         XCTAssertEqual(result.response?.status, .fail)
-        XCTAssertEqual(result.response?.components.count, 1)
+        XCTAssertEqual(result.response?.version, "1")
     }
 
-    func testDeclaredStatusWinsOverChecks() {
-        // The validator flags the mismatch; the monitor trusts the declared overall status.
+    func testDeclaredStatusWinsOverLegacyChecks() {
+        // A legacy `checks` block is ignored: the monitor trusts the declared overall status.
         let result = evaluate(200, #"{"status":"pass","checks":{"db:x":[{"status":"fail"}]}}"#)
         XCTAssertTrue(result.isHealthy)
         XCTAssertFalse(result.isDegraded)
@@ -413,8 +398,8 @@ final class HealthDetailsStoreTests: XCTestCase {
     func testKeepsOnlyLatestPerEndpointAndRemoves() {
         let store = HealthDetailsStore()
         let id = UUID()
-        let first = HealthStandardResponse(status: .pass, version: "1", releaseId: nil, output: nil, components: [])
-        let second = HealthStandardResponse(status: .warn, version: "2", releaseId: nil, output: "x", components: [])
+        let first = HealthStandardResponse(status: .pass, version: "1", releaseId: nil, output: nil)
+        let second = HealthStandardResponse(status: .warn, version: "2", releaseId: nil, output: "x")
         store.record(first, for: id, at: Date(timeIntervalSince1970: 1))
         store.record(second, for: id, at: Date(timeIntervalSince1970: 2))
         XCTAssertEqual(store.latest.count, 1)

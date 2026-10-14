@@ -88,17 +88,11 @@ describe('endpoints routes: healthStandard', () => {
       expect(res.json()).toEqual({ healthStandard: true, latest: null });
     });
 
-    it('returns the latest components', async () => {
+    it('returns the latest report (with the deprecated, always-empty components list)', async () => {
       const created = (await create({ healthStandard: true })).json();
       await recordHealthDetails(
         created.id,
-        {
-          status: 'warn',
-          version: '1.0',
-          releaseId: 'abc',
-          output: 'Disk',
-          components: [{ key: 'disk:utilization', status: 'warn', observedValue: 91, observedUnit: 'percent' }],
-        },
+        { status: 'warn', version: '1.0', releaseId: 'abc', output: 'Disk' },
         new Date('2026-10-11T09:30:00Z'),
       );
 
@@ -115,7 +109,7 @@ describe('endpoints routes: healthStandard', () => {
           releaseId: 'abc',
           output: 'Disk',
           checkedAt: '2026-10-11T09:30:00.000Z',
-          components: [{ key: 'disk:utilization', status: 'warn', observedValue: 91, observedUnit: 'percent' }],
+          components: [],
         },
       });
     });

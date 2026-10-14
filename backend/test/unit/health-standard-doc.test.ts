@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HEALTH_STANDARD_EXAMPLES, HEALTH_STANDARD_RULES, HTTP_STATUS_FOR, isHealthStatus } from '../../src/modules/standards/health-standard.js';
+import {
+  HEALTH_STANDARD_EXAMPLES,
+  HEALTH_STANDARD_FIELDS,
+  HEALTH_STANDARD_RULES,
+  HTTP_STATUS_FOR,
+  isHealthStatus,
+} from '../../src/modules/standards/health-standard.js';
 import { validateHealthResponse } from '../../src/modules/standards/health-standard-validator.js';
 
 /**
@@ -43,11 +49,21 @@ describe('docs/health-standard.md', () => {
     expect(doc).toContain('HTTP/1.1 503 Service Unavailable');
   });
 
-  it('mentions every field the schema defines and every MUST-level topic', () => {
-    for (const field of ['status', 'version', 'releaseId', 'serviceId', 'description', 'notes', 'output', 'checks',
-      'componentId', 'componentType', 'observedValue', 'observedUnit', 'time']) {
+  it('no JSON example publishes "checks" or any field outside the standard', () => {
+    for (const body of jsonBlocks) {
+      expect(Object.keys(body).filter((key) => !HEALTH_STANDARD_FIELDS.includes(key)), JSON.stringify(body)).toEqual([]);
+    }
+  });
+
+  it('mentions every field the standard defines and explains why "checks" is gone', () => {
+    for (const field of HEALTH_STANDARD_FIELDS) {
       expect(doc).toContain(`\`${field}\``);
     }
+    expect(doc).toContain('`checks`');
+    expect(doc).toContain('was removed');
+  });
+
+  it('mentions every MUST-level topic', () => {
     expect(HEALTH_STANDARD_RULES.filter((rule) => rule.level === 'must').length).toBeGreaterThan(0);
     expect(doc).toContain('zext-health/v1');
     expect(doc).toContain('application/health+json');

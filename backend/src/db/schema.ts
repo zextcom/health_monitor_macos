@@ -142,8 +142,8 @@ export const versionHistory = pgTable(
 // ── Health Standard ──
 
 /**
- * Latest parsed health-standard response per endpoint. Only the newest component list is kept
- * (overwritten on every check) so component checks never bloat the per-result history.
+ * Latest parsed health-standard response per endpoint (overwritten on every check, so it never
+ * bloats the per-result history).
  */
 export const endpointHealthState = pgTable('endpoint_health_state', {
   endpointId: uuid('endpoint_id')
@@ -154,7 +154,12 @@ export const endpointHealthState = pgTable('endpoint_health_state', {
   version: text('version'),
   releaseId: text('release_id'),
   output: text('output'),
-  components: jsonb('components').$type<HealthComponent[]>().notNull().default([]),
+  /**
+   * Deprecated and no longer written or read: per-component checks were removed from the standard.
+   * Kept (default `[]`) so a rollback to the previous release still finds its column; drop it in a
+   * later migration once that release is no longer a rollback target.
+   */
+  components: jsonb('components').$type<unknown[]>().notNull().default([]),
 });
 
 // ── Health Checks ──
@@ -261,18 +266,6 @@ export interface VersionCheckConfig {
 }
 
 export type HealthStatus = 'pass' | 'warn' | 'fail';
-
-/** One flattened entry of a health-standard `checks` map (`key` is the `component:measurement` name). */
-export interface HealthComponent {
-  key: string;
-  status: HealthStatus;
-  componentId?: string;
-  componentType?: string;
-  observedValue?: number | string | boolean;
-  observedUnit?: string;
-  time?: string;
-  output?: string;
-}
 
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { endpointHealthState } from '../../db/schema.js';
-import type { Endpoint, HealthComponent, HealthStatus, JsonAssertion } from '../../db/schema.js';
+import type { Endpoint, HealthStatus, JsonAssertion } from '../../db/schema.js';
 import {
   evaluateStandardResponse,
   trackedVersionValue,
@@ -94,7 +94,7 @@ export async function notifyDegradedTransition(
   }
 }
 
-/** Overwrites the endpoint's latest parsed standard response (only the newest component list is kept). */
+/** Overwrites the endpoint's latest parsed standard response (only the newest one is kept). */
 export async function recordHealthDetails(
   endpointId: string,
   parsed: ParsedHealthResponse,
@@ -106,7 +106,6 @@ export async function recordHealthDetails(
     version: parsed.version,
     releaseId: parsed.releaseId,
     output: parsed.output,
-    components: parsed.components,
   };
   await db
     .insert(endpointHealthState)
@@ -120,7 +119,9 @@ export interface HealthDetails {
   releaseId: string | null;
   output: string | null;
   checkedAt: string;
-  components: HealthComponent[];
+  /** Deprecated and always empty: components are no longer part of the standard. Kept only so clients
+   * that still read `latest.components` don't break; remove once those clients are gone. */
+  components: never[];
 }
 
 export function toHealthDetails(row: typeof endpointHealthState.$inferSelect): HealthDetails {
@@ -130,7 +131,7 @@ export function toHealthDetails(row: typeof endpointHealthState.$inferSelect): H
     releaseId: row.releaseId,
     output: row.output,
     checkedAt: row.checkedAt.toISOString(),
-    components: row.components,
+    components: [],
   };
 }
 

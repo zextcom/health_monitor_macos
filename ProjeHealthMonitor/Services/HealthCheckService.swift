@@ -344,7 +344,7 @@ final class HealthCheckService: ObservableObject {
 
     struct CheckOutcome {
         let result: HealthCheckResult
-        /// Parsed body for health-standard endpoints when it could be read (components, version).
+        /// Parsed body for health-standard endpoints when it could be read (status, version).
         let standardResponse: HealthStandardResponse?
     }
 

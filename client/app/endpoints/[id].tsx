@@ -28,13 +28,11 @@ import { useRefreshOnFocus } from '../../src/hooks/useRefreshOnFocus';
 import { useSSE } from '../../src/hooks/useSSE';
 import { checkState, deriveStatus, stateOfHealthStatus } from '../../src/logic/status';
 import {
-  componentTitle,
   formatDateTime,
-  formatObservedValue,
   formatSeenRange,
   formatVersion,
   healthStatusLabel,
-  shouldShowComponents,
+  shouldShowHealthReport,
   shouldShowVersion,
   sortVersionHistory,
   versionSourceLabel,
@@ -226,7 +224,7 @@ export default function EndpointDetailScreen() {
         <VersionSection endpoint={endpoint} versions={versions} />
       ) : null}
 
-      {shouldShowComponents(healthDetails, endpoint) ? <ComponentsSection details={healthDetails} /> : null}
+      {shouldShowHealthReport(healthDetails, endpoint) ? <ReportedHealthSection details={healthDetails} /> : null}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Uptime (7 days)</Text>
@@ -322,14 +320,14 @@ function VersionSection({ endpoint, versions }: { endpoint: Endpoint; versions: 
   );
 }
 
-function ComponentsSection({ details }: { details: HealthDetailsResponse | null }) {
+function ReportedHealthSection({ details }: { details: HealthDetailsResponse | null }) {
   const latest = details?.latest ?? null;
   const overall = latest ? stateOfHealthStatus(latest.status) : null;
 
   return (
     <View style={styles.card}>
       <View style={styles.titleRow}>
-        <Text style={styles.sectionTitle}>Components</Text>
+        <Text style={styles.sectionTitle}>Reported health</Text>
         {latest && overall ? (
           <View style={styles.inlineRow}>
             <StateMarker state={overall} />
@@ -343,29 +341,6 @@ function ComponentsSection({ details }: { details: HealthDetailsResponse | null 
         <>
           {latest.output ? <Text style={styles.reasonText}>{latest.output}</Text> : null}
           <Text style={styles.muted}>Reported {formatDateTime(latest.checkedAt)}</Text>
-          {latest.components.length === 0 ? (
-            <Text style={styles.muted}>The response lists no component checks.</Text>
-          ) : (
-            latest.components.map((component, index) => {
-              const observed = formatObservedValue(component);
-              const state = stateOfHealthStatus(component.status);
-              return (
-                <View key={`${component.key}-${index}`} style={styles.componentRow}>
-                  <View style={styles.inlineRow}>
-                    <StateMarker state={state} />
-                    <Text style={styles.componentKey} numberOfLines={2}>
-                      {componentTitle(component)}
-                    </Text>
-                    <Text style={[styles.componentStatus, { color: colors[state] }]}>
-                      {healthStatusLabel(component.status)}
-                    </Text>
-                  </View>
-                  {observed ? <Text style={styles.historyMeta}>Observed: {observed}</Text> : null}
-                  {component.output ? <Text style={styles.componentOutput}>{component.output}</Text> : null}
-                </View>
-              );
-            })
-          )}
         </>
       )}
     </View>
@@ -498,26 +473,6 @@ const styles = StyleSheet.create({
   },
   versionValueCurrent: {
     fontWeight: '700',
-  },
-  componentRow: {
-    gap: 4,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  componentKey: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  componentStatus: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  componentOutput: {
-    fontSize: 13,
-    color: colors.textSecondary,
   },
   historyTime: {
     flex: 1,

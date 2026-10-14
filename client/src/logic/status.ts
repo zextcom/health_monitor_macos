@@ -10,7 +10,7 @@ import type { HealthStatus } from '../api/endpoints';
 
 export type Status = 'healthy' | 'degraded' | 'unhealthy' | 'paused' | 'unknown';
 
-/** The per-result states a single check can have (history dots, components). */
+/** The per-result states a single check can have (history dots, reported health). */
 export type CheckState = 'healthy' | 'degraded' | 'unhealthy';
 
 export interface StatusInput {

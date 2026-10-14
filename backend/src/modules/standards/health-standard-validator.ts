@@ -1,12 +1,12 @@
 import type { HealthStatus } from '../../db/schema.js';
 import {
   HEALTH_MEDIA_TYPE,
+  HEALTH_STANDARD_FIELDS,
   HEALTH_STANDARD_ID,
   HTTP_STATUS_FOR,
   RESPONSE_TIME_LIMIT_MS,
   isHealthStatus,
   isPlainObject,
-  worstStatus,
 } from './health-standard.js';
 
 /**
@@ -14,8 +14,8 @@ import {
  * pasted-response modes) and tests share it. MUST violations become `errors` (and make the response
  * invalid); SHOULD violations and leak heuristics become `warnings`.
  *
- * `path` is a JSON Pointer into the body (`""` = the whole body, e.g. `/checks/disk:utilization/0/status`)
- * or, for HTTP metadata, one of `http.status`, `http.headers.content-type`, `http.headers.cache-control`,
+ * `path` is a JSON Pointer into the body (`""` = the whole body, e.g. `/version`) or, for HTTP
+ * metadata, one of `http.status`, `http.headers.content-type`, `http.headers.cache-control`,
  * `http.responseTime`.
  */
 
@@ -49,7 +49,6 @@ export interface ValidationReport {
     status?: HealthStatus;
     version?: string;
     releaseId?: string;
-    checkCount: number;
   };
 }
 
@@ -59,10 +58,6 @@ function pointer(...segments: Array<string | number>): string {
 }
 
 const STRING_FIELDS = ['version', 'releaseId', 'serviceId', 'description', 'output'] as const;
-const CHECK_STRING_FIELDS = ['componentId', 'componentType', 'observedUnit', 'output'] as const;
-
-// ISO 8601 date-time with a time zone (what JSON Schema's `date-time` format means).
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i;
 
 // ── Leak heuristics (warnings only — they can have false positives) ──
 
@@ -98,7 +93,7 @@ function leakFindings(value: unknown, path: string, out: ValidationIssue[]): voi
   if (isPlainObject(value)) {
     for (const [key, child] of Object.entries(value)) {
       const childPath = `${path}${pointer(key)}`;
-      // Keys of the checks map are component names, not field names — "token-service:responseTime" is fine.
+      // Keys of a legacy checks map are component names, not field names — "token-service:responseTime" is fine.
       const isCheckName = path === '/checks';
       if (!isCheckName && SENSITIVE_KEY.test(key)) {
         out.push({ path: childPath, rule: 'no-sensitive-data', message: `Key "${key}" suggests a secret; never include credentials.` });
@@ -129,7 +124,6 @@ export function validateHealthResponse(input: HealthResponseInput): ValidationRe
   const observed: ValidationReport['observed'] = {
     httpStatus: input.httpStatus,
     contentType: input.contentType ?? null,
-    checkCount: 0,
   };
   if (typeof input.responseTimeMs === 'number') {
     observed.responseTimeMs = input.responseTimeMs;
@@ -247,72 +241,19 @@ export function validateHealthResponse(input: HealthResponseInput): ValidationRe
     warnings.push({ path: '/releaseId', rule: 'release-id', message: 'Add "releaseId" (e.g. the git SHA of the deploy).' });
   }
 
-  // checks
-  const checkStatuses: HealthStatus[] = [];
-  if ('checks' in body) {
-    if (!isPlainObject(body.checks)) {
-      errors.push({ path: '/checks', rule: 'check-entries', message: '"checks" must be an object.' });
-    } else {
-      for (const [key, entries] of Object.entries(body.checks)) {
-        const keyPath = pointer('checks', key);
-        if (!Array.isArray(entries)) {
-          errors.push({ path: keyPath, rule: 'check-entries', message: `"${key}" must be an array of check objects.` });
-          continue;
-        }
-        entries.forEach((entry, index) => {
-          const entryPath = `${keyPath}${pointer(index)}`;
-          observed.checkCount += 1;
-          if (!isPlainObject(entry)) {
-            errors.push({ path: entryPath, rule: 'check-entries', message: 'Each check entry must be an object.' });
-            return;
-          }
-          if (!isHealthStatus(entry.status)) {
-            errors.push({
-              path: `${entryPath}/status`,
-              rule: 'check-entries',
-              message: `Check status must be "pass", "warn" or "fail", got ${JSON.stringify(entry.status)}.`,
-            });
-          } else {
-            checkStatuses.push(entry.status);
-          }
-          for (const field of CHECK_STRING_FIELDS) {
-            if (field in entry && typeof entry[field] !== 'string') {
-              errors.push({ path: `${entryPath}${pointer(field)}`, rule: 'field-types', message: `"${field}" must be a string.` });
-            }
-          }
-          if ('observedValue' in entry && !['number', 'string', 'boolean'].includes(typeof entry.observedValue)) {
-            errors.push({
-              path: `${entryPath}/observedValue`,
-              rule: 'field-types',
-              message: '"observedValue" must be a number, string or boolean.',
-            });
-          }
-          if ('time' in entry && (typeof entry.time !== 'string' || !ISO_DATE_TIME.test(entry.time))) {
-            errors.push({
-              path: `${entryPath}/time`,
-              rule: 'field-types',
-              message: '"time" must be an ISO 8601 date-time with a time zone, e.g. "2026-10-11T09:30:00Z".',
-            });
-          }
-        });
-        if (!key.includes(':')) {
-          warnings.push({
-            path: keyPath,
-            rule: 'check-entries',
-            message: `Name checks "component:measurement", e.g. "${key}:responseTime".`,
-          });
-        }
-      }
-    }
-  }
-
-  if (status && checkStatuses.length > 0) {
-    const worst = worstStatus(checkStatuses);
-    if (worst !== status) {
-      errors.push({
-        path: '/status',
-        rule: 'worst-of-checks',
-        message: `Overall status is "${status}" but the worst check status is "${worst}".`,
+  // Public-minimum: the endpoint is unauthenticated, so everything beyond the standard's fields is exposed.
+  for (const key of Object.keys(body)) {
+    if (key === 'checks') {
+      warnings.push({
+        path: pointer(key),
+        rule: 'no-checks',
+        message: 'Remove "checks": per-component details are public here and the monitor ignores them. Decide the overall "status" inside the service.',
+      });
+    } else if (!HEALTH_STANDARD_FIELDS.includes(key)) {
+      warnings.push({
+        path: pointer(key),
+        rule: 'known-fields',
+        message: `"${key}" is not part of the standard and is public; remove it unless the monitor needs it.`,
       });
     }
   }
