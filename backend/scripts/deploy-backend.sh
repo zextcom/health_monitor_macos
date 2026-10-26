@@ -9,6 +9,10 @@
 #   3. Exit 1 whenever the new release didn't make it — even after a clean rollback — so the job
 #      goes red. A rollback that also fails is reported as needing manual intervention.
 #
+# The commit being deployed is handed to the apps as RELEASE_ID (`pm2 restart --update-env`), so the
+# `releaseId` that /health reports, and verify-deploy.sh checks, never depends on the apps being able to
+# run `git rev-parse` (that failed with "dubious ownership" when pm2 ran them as `deploy` with HOME=/root).
+#
 # Database migrations can't be rolled back (drizzle has no down migrations). If the failed release
 # shipped new migration files they stay applied; this logs a warning. Migrations here are
 # additive, so the previous code keeps working against the newer schema.
@@ -45,7 +49,7 @@ main() {
     failed_at="build"
   elif ! (cd backend && npx drizzle-kit migrate); then
     failed_at="migrate"
-  elif ! pm2 restart $apps; then
+  elif ! RELEASE_ID="$new" pm2 restart $apps --update-env; then
     failed_at="restart"
   elif ! bash "$tools/verify-deploy.sh" "$health_url" "$new" "$timeout"; then
     failed_at="verification"
@@ -73,7 +77,7 @@ main() {
   git reset --hard "$prev"
   if (cd backend && pnpm install --frozen-lockfile) \
     && (cd backend && pnpm run build) \
-    && pm2 restart $apps \
+    && RELEASE_ID="$prev" pm2 restart $apps --update-env \
     && bash "$tools/verify-deploy.sh" "$health_url" "$prev" "$timeout"; then
     echo "::error::Deploy of $new failed at $failed_at; rolled back to $prev, which is healthy."
   else
