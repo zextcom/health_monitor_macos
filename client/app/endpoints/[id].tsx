@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { ApiError } from '../../src/api/client';
 import {
+  deleteEndpoint,
   getEndpoint,
   getEndpointHealthDetails,
   getEndpointVersions,
@@ -26,6 +27,7 @@ import { StateMarker, StatusBadge } from '../../src/components/StatusBadge';
 import { EmptyState } from '../../src/components/EmptyState';
 import { useRefreshOnFocus } from '../../src/hooks/useRefreshOnFocus';
 import { useSSE } from '../../src/hooks/useSSE';
+import { deleteConfirmation, isAlreadyDeleted } from '../../src/logic/deleteEndpoint';
 import { checkState, deriveStatus, stateOfHealthStatus } from '../../src/logic/status';
 import {
   formatDateTime,
@@ -40,6 +42,25 @@ import {
   versionStatusText,
 } from '../../src/logic/format';
 
+/** `Alert.alert` has no buttons on react-native-web, so the web build falls back to `window.confirm`. */
+function confirmDelete(name: string): Promise<boolean> {
+  const { title, message } = deleteConfirmation(name);
+  if (Platform.OS === 'web') {
+    return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+  }
+  return new Promise((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
 export default function EndpointDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -50,6 +71,7 @@ export default function EndpointDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   // Optional extras: an older backend without these routes still shows the rest of the screen.
   const [versions, setVersions] = useState<VersionHistoryResponse | null>(null);
   const [healthDetails, setHealthDetails] = useState<HealthDetailsResponse | null>(null);
@@ -111,6 +133,28 @@ export default function EndpointDetailScreen() {
       setError(err instanceof ApiError ? err.message : 'Failed to update endpoint');
     } finally {
       setIsToggling(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!endpoint || isDeleting) return;
+    if (!(await confirmDelete(endpoint.name))) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteEndpoint(endpoint.id);
+    } catch (err) {
+      if (!(err instanceof ApiError && isAlreadyDeleted(err.status))) {
+        setError(err instanceof ApiError ? err.message : 'Failed to delete endpoint');
+        setIsDeleting(false);
+        return;
+      }
+    }
+    // The list refetches when it regains focus, so it drops the deleted endpoint by itself.
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/endpoints');
     }
   };
 
@@ -263,12 +307,26 @@ export default function EndpointDetailScreen() {
           pressed && styles.buttonPressed,
         ]}
         onPress={handleToggle}
-        disabled={isToggling}
+        disabled={isToggling || isDeleting}
       >
         {isToggling ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.toggleButtonText}>{endpoint.isPaused ? 'Resume Monitoring' : 'Pause Monitoring'}</Text>
+        )}
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.deleteButton, pressed && styles.buttonPressed]}
+        onPress={handleDelete}
+        disabled={isToggling || isDeleting}
+        accessibilityRole="button"
+        accessibilityLabel="Delete endpoint"
+      >
+        {isDeleting ? (
+          <ActivityIndicator color={colors.unhealthy} />
+        ) : (
+          <Text style={styles.deleteButtonText}>Delete Endpoint</Text>
         )}
       </Pressable>
     </ScrollView>
@@ -489,7 +547,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+  },
+  deleteButton: {
+    borderWidth: 1,
+    borderColor: colors.unhealthy,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 24,
+  },
+  deleteButtonText: {
+    color: colors.unhealthy,
+    fontSize: 16,
+    fontWeight: '600',
   },
   pauseButton: {
     backgroundColor: colors.paused,
