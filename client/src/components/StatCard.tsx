@@ -10,7 +10,15 @@ interface StatCardProps {
 export function StatCard({ label, value, color = colors.text }: StatCardProps) {
   return (
     <View style={styles.card}>
-      <Text style={[styles.value, { color }]}>{value}</Text>
+      {/* One line, shrunk to fit: "100.00%" at 24pt is wider than a third-width card, which pushed the "%" onto a second line. */}
+      <Text
+        style={[styles.value, { color }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
+        {value}
+      </Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
@@ -32,6 +40,9 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 24,
     fontWeight: '700',
+    // Fill the card's width so the font-size fitting has a bound to shrink to.
+    alignSelf: 'stretch',
+    textAlign: 'center',
   },
   label: {
     fontSize: 12,
