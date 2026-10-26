@@ -1,3 +1,4 @@
+import { buildRequestHeaders } from '../logic/request';
 import { storage } from './storage';
 
 // Configurable via EXPO_PUBLIC_API_URL (inlined at build time by Expo).
@@ -128,10 +129,7 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const { body, skipAuth, headers, ...rest } = options;
 
-  const finalHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((headers as Record<string, string>) ?? {}),
-  };
+  const finalHeaders = buildRequestHeaders(body !== undefined, (headers as Record<string, string>) ?? {});
 
   if (!skipAuth) {
     const token = await getAccessToken();
