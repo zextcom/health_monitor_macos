@@ -2,18 +2,24 @@ import SwiftUI
 
 struct SparklineView: View {
     let results: [HealthCheckResult]
-    var barWidth: CGFloat = 4
     var spacing: CGFloat = 1.5
     var height: CGFloat = 16
+    /// Number of bar slots. Bars share the available width equally, so the strip always spans the
+    /// full row; with fewer results the leading slots stay empty and the latest check sits on the right.
+    var capacity: Int = 30
 
     var body: some View {
         HStack(alignment: .bottom, spacing: spacing) {
-            ForEach(results) { result in
+            ForEach(0..<max(capacity - results.count, 0), id: \.self) { _ in
+                Color.clear.frame(maxWidth: .infinity)
+            }
+            ForEach(results.suffix(capacity)) { result in
                 let state = EndpointHealthState(result)
                 // Degraded bars are shorter as well as orange, so they're distinguishable without color.
                 RoundedRectangle(cornerRadius: 1)
                     .fill(state.color)
-                    .frame(width: barWidth, height: state == .degraded ? height * 0.55 : height)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: state == .degraded ? height * 0.55 : height)
                     .help(tooltip(for: result))
                     .accessibilityHidden(true)
             }
